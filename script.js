@@ -26,6 +26,11 @@ function canEditVisit(visit) {
   return isAdmin() || visit.user_id === state.currentUser?.id;
 }
 
+function mapsUrl(store) {
+  const query = [store.name, store.address, store.city].filter(Boolean).join(', ');
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
 let state = {
   screen: 'login',
   tab: 'stores',
@@ -37,9 +42,7 @@ let state = {
   potentialDays: [],
   timeBounds: [],
   filterDay: 'all',
-  filterSearch: '',
-  filterDay: 'all',
-  filterCity: 'all', 
+  filterCity: 'all',
   filterSearch: '',
   modal: null,
 
@@ -49,9 +52,9 @@ let state = {
   editEarly: '',
   editLate: '',
 
-  editVisit: null,         // store_id when logging new; visit object when editing existing
-  editVisitId: null,       // id of the visit row being edited (null = new)
-  editVisitStoreId: null,  // store_id context for the visit modal
+  editVisit: null,
+  editVisitId: null,
+  editVisitStoreId: null,
   editQuality: 0,
   editAmount: 0,
   editVariety: 0,
@@ -60,7 +63,8 @@ let state = {
   editPrices: '',
   editNotes: '',
 
-  viewLogsStoreId: null,   // store whose visit log modal is open
+  viewLogsStoreId: null,
+
   routeDay: '',
   routeStartAddress: '',
   routeStartCity: '',
@@ -99,6 +103,15 @@ async function loadAll() {
 async function createUser(name) {
   if (IS_DEMO) return true;
   const { error } = await db.from('Users').insert([{ name }]);
+  if (error) { showToast(error.message, 'error'); return false; }
+  const { data } = await db.from('Users').select('*').order('name');
+  state.users = data || [];
+  return true;
+}
+
+async function deleteUser(id) {
+  if (IS_DEMO) return true;
+  const { error } = await db.from('Users').delete().eq('id', id);
   if (error) { showToast(error.message, 'error'); return false; }
   const { data } = await db.from('Users').select('*').order('name');
   state.users = data || [];
@@ -185,7 +198,7 @@ function initials(name) { return (name || '?').split(' ').map(w => w[0]).join(''
 function avatarColor(name) { let h = 0; for (let c of (name||'')) h = (h << 5) - h + c.charCodeAt(0); return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]; }
 function stars(n) { return Array.from({length:5}, (_,i) => `<span class="star ${i < n ? 'star-on' : 'star-off'}">★</span>`).join(''); }
 function formatTime(t) { if (!t) return null; const [h, m] = t.split(':'); const hr = parseInt(h); return `${hr > 12 ? hr-12 : hr || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`; }
-function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');}
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 function getTodayString() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function formatDate(iso) {
   if (!iso) return '';
@@ -311,14 +324,22 @@ function renderAccountsModal() {
         <h2 class="modal-title">Switch profile</h2>
       </div>
       <div class="user-list">
-        ${state.users.map(u => `
-          <div class="user-row ${state.currentUser?.id === u.id ? 'user-row--active' : ''}" data-action="switch-user" data-id="${u.id}">
+        ${state.users.map(u => {
+          const isActive = state.currentUser?.id === u.id;
+          const isSelf = isActive;
+          const logCount = state.visits.filter(v => v.user_id === u.id).length;
+          return `
+          <div class="user-row ${isActive ? 'user-row--active' : ''}" data-action="switch-user" data-id="${u.id}">
             <div class="avatar" style="background:${avatarColor(u.name)}">${initials(u.name)}</div>
-            <div>
-              <div class="user-row-name">${esc(u.name)}${state.currentUser?.id === u.id ? ' <span class="active-tag">active</span>' : ''}</div>
-              <div class="user-row-sub">${state.currentUser?.id === u.id ? 'Currently signed in' : 'Switch to this profile'}</div>
+            <div style="flex:1;min-width:0">
+              <div class="user-row-name">${esc(u.name)}${isActive ? ' <span class="active-tag">active</span>' : ''}</div>
+              <div class="user-row-sub">${isActive ? 'Currently signed in' : 'Switch to this profile'}</div>
             </div>
-          </div>`).join('')}
+            ${isAdmin() && !isSelf ? `
+            <button class="btn btn-danger btn-xs delete-user-btn" data-action="delete-user" data-id="${u.id}" data-name="${esc(u.name)}" data-logs="${logCount}">Delete</button>
+            ` : ''}
+          </div>`;
+        }).join('')}
         ${state.addingUser ? `
           <div class="add-user-form">
             <input type="text" id="new-user-input" placeholder="Your name..." autofocus />
@@ -345,7 +366,6 @@ function renderStores() {
     const cityMatch = state.filterCity === 'all' || s.city === state.filterCity;
     const q = state.filterSearch.toLowerCase();
     const searchMatch = !q || s.name.toLowerCase().includes(q) || (s.address||'').toLowerCase().includes(q) || (s.city||'').toLowerCase().includes(q);
-
     return dayMatch && cityMatch && searchMatch;
   });
 
@@ -380,6 +400,7 @@ function renderStoreCard(s) {
   const location = [s.address, s.city].filter(Boolean).join(', ');
   const storeVisits = state.visits.filter(v => v.store_id === s.id).sort((a,b) => new Date(b.visit_date) - new Date(a.visit_date));
   const latest = storeVisits[0];
+  const hasLocation = !!(s.address || s.city);
 
   return `
   <div class="store-card">
@@ -389,6 +410,7 @@ function renderStoreCard(s) {
         ${location ? `<p class="store-location">${esc(location)}</p>` : ''}
       </div>
       <div class="store-card-actions">
+        ${hasLocation ? `<a href="${mapsUrl(s)}" target="_blank" class="btn btn-ghost btn-sm maps-btn" title="Open in Google Maps">📍 Maps</a>` : ''}
         <button class="btn btn-ghost btn-sm" data-action="edit-store" data-id="${s.id}">Edit</button>
         <button class="btn btn-primary btn-sm" data-action="open-log-visit" data-id="${s.id}">Log visit</button>
       </div>
@@ -435,6 +457,7 @@ function renderLogsModal() {
   const store = state.stores.find(s => s.id === state.viewLogsStoreId);
   if (!store) return '';
   const logs = state.visits.filter(v => v.store_id === store.id).sort((a,b) => new Date(b.visit_date) - new Date(a.visit_date));
+  const hasLocation = !!(store.address || store.city);
 
   return `
   <div class="modal-overlay" data-action="close-modal-overlay">
@@ -442,7 +465,10 @@ function renderLogsModal() {
       <div class="modal-header">
         <div>
           <h2 class="modal-title">${esc(store.name)}</h2>
-          <p class="modal-sub">Visit history · ${logs.length} log${logs.length !== 1 ? 's' : ''}</p>
+          <p class="modal-sub">
+            Visit history · ${logs.length} log${logs.length !== 1 ? 's' : ''}
+            ${hasLocation ? `· <a href="${mapsUrl(store)}" target="_blank" class="modal-maps-link">📍 Open in Maps</a>` : ''}
+          </p>
         </div>
         <button class="modal-close" data-action="close-modal">✕</button>
       </div>
@@ -451,8 +477,11 @@ function renderLogsModal() {
       <div class="logs-list">
         ${logs.map(v => {
           const canEdit = canEditVisit(v);
-          const products = Array.isArray(v.products_found) ? v.products_found : (v.products_found ? [String(v.products_found)] : []);
-
+          const products = Array.isArray(v.products_found)
+            ? v.products_found
+            : (typeof v.products_found === 'string'
+                ? v.products_found.replace(/^[{\[]|[}\]]$/g,'').replace(/"/g,'').split(',').map(s => s.trim()).filter(Boolean)
+                : []);
           return `
           <div class="log-row">
             <div class="log-row-header">
@@ -608,7 +637,7 @@ function renderRoute() {
   <div class="page-header">
     <div>
       <h1 class="page-title">Route planner</h1>
-      <p class="page-sub">Build an optimized run for a given day</p>
+      <p class="page-sub">Build a run for a given day</p>
     </div>
   </div>
   <div class="route-setup">
@@ -621,14 +650,14 @@ function renderRoute() {
         </select>
       </div>
       <div class="form-group" style="margin:0;flex:2;min-width:180px">
-        <label class="form-label">Starting Address</label>
+        <label class="form-label">Starting address</label>
         <input type="text" class="form-input" id="route-start-address" value="${esc(state.routeStartAddress)}" placeholder="123 Main St" />
       </div>
       <div class="form-group" style="margin:0;flex:1;min-width:120px">
         <label class="form-label">City</label>
         <input type="text" class="form-input" id="route-start-city" value="${esc(state.routeStartCity)}" placeholder="Grand Rapids" />
       </div>
-      <div class="form-group" style="margin:0;flex:1;min-width:80px">
+      <div class="form-group" style="margin:0;width:70px">
         <label class="form-label">State</label>
         <input type="text" class="form-input" id="route-start-state" value="${esc(state.routeStartState)}" placeholder="MI" />
       </div>
@@ -641,43 +670,47 @@ function renderRoute() {
 function renderRouteResult() {
   const { stops, day } = state.routeResult;
   if (!stops.length) return `<div class="empty-state"><p class="empty-title">No stores on ${esc(day)}</p><p class="empty-sub">Add restock days to your stores to see them here.</p></div>`;
-  
+
   const startLocation = [state.routeStartAddress, state.routeStartCity, state.routeStartState].filter(Boolean).join(', ');
-  const mapsUrl = 'https://www.google.com/maps/dir/' + [startLocation, ...stops.map(s => [s.address, s.city].filter(Boolean).join(', '))].filter(Boolean).map(encodeURIComponent).join('/');
+  const googleMapsUrl = 'https://www.google.com/maps/dir/' + [startLocation, ...stops.map(s => [s.address, s.city].filter(Boolean).join(', '))].filter(Boolean).map(encodeURIComponent).join('/');
 
   return `
-    <div class="route-result-header" style="display: flex; justify-content: space-between; align-items: center;">
-      <span class="route-summary" style="display: inline-block;">
-        ${stops.length} stop${stops.length!==1?'s':''} on <strong>${esc(day)}</strong>
-      </span>
-      <a href="${mapsUrl}" target="_blank" class="btn btn-ghost btn-sm">Open in Google Maps ↗</a>
-    </div>
-    <div class="route-stops">
-      ${stops.map((s, i) => {
-        const isConf = state.confirmedDays.some(d => d.store_id === s.id && d.day === day);
-        const tb = state.timeBounds.find(t => t.store_id === s.id);
-        return `
-        <div class="route-stop">
-          <div class="stop-index ${i===0?'stop-index-first':''}">${i+1}</div>
-          <div class="stop-body">
-            <div class="stop-name">${esc(s.name)}</div>
-            <div class="stop-address">${esc([s.address, s.city].filter(Boolean).join(', '))}</div>
-            <div class="tag-row" style="margin-top:8px">
-              <span class="tag ${isConf?'tag-confirmed':'tag-potential'}">${isConf?'✓ Confirmed':'~ Potential'}</span>
-              ${tb ? `<span class="tag tag-time">${formatTime(tb.early_bound)} – ${formatTime(tb.late_bound)}</span>` : ''}
-            </div>
+  <div class="route-result-header">
+    <span class="route-summary">${stops.length} stop${stops.length!==1?'s':''} on <strong>${esc(day)}</strong></span>
+    <a href="${googleMapsUrl}" target="_blank" class="btn btn-ghost btn-sm">Open in Google Maps ↗</a>
+  </div>
+  <div class="route-stops">
+    ${stops.map((s, i) => {
+      const isConf = state.confirmedDays.some(d => d.store_id === s.id && d.day === day);
+      const tb = state.timeBounds.find(t => t.store_id === s.id);
+      const hasLocation = !!(s.address || s.city);
+      return `
+      <div class="route-stop">
+        <div class="stop-index ${i===0?'stop-index-first':''}">${i+1}</div>
+        <div class="stop-body">
+          <div class="stop-name">${esc(s.name)}</div>
+          <div class="stop-address">${esc([s.address, s.city].filter(Boolean).join(', '))}</div>
+          <div class="tag-row" style="margin-top:8px">
+            <span class="tag ${isConf?'tag-confirmed':'tag-potential'}">${isConf?'✓ Confirmed':'~ Potential'}</span>
+            ${tb ? `<span class="tag tag-time">${formatTime(tb.early_bound)} – ${formatTime(tb.late_bound)}</span>` : ''}
+            ${hasLocation ? `<a href="${mapsUrl(s)}" target="_blank" class="tag tag-maps">📍 Maps</a>` : ''}
           </div>
-        </div>`;
-      }).join('')}
-    </div>`;
-  }
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
 
 // ─── EVENTS ───────────────────────────────────────────────────
 function attachEvents() {
   document.querySelectorAll('[data-action]').forEach(el => {
-    if (el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.dataset.action === 'search')) return;
+    // Skip selects, search inputs, and plain anchor tags (Maps links)
+    if (el.tagName === 'SELECT') return;
+    if (el.tagName === 'INPUT' && el.dataset.action === 'search') return;
+    if (el.tagName === 'A') return;
     el.addEventListener('click', handleClick);
   });
+
   document.querySelectorAll('[data-action="toggle-product"]').forEach(el => el.addEventListener('change', handleToggleProduct));
 
   const searchEl = document.querySelector('[data-action="search"]');
@@ -694,7 +727,6 @@ function attachEvents() {
 
   const cityFilter = document.querySelector('[data-action="filter-city"]');
   if (cityFilter) cityFilter.addEventListener('change', e => { state.filterCity = e.target.value; render(); });
-
 }
 
 function handleToggleProduct(e) {
@@ -712,24 +744,13 @@ function openVisitModal(storeId, existingVisit = null) {
   state.editAmount = existingVisit?.inventory_amount || 0;
   state.editVariety = existingVisit?.inventory_variety || 0;
 
-  // Robustly parse the products to handle strings, Postgres arrays, or JSON arrays
   let parsedProducts = [];
-  const rawProducts = existingVisit?.products_found;
-  
-  if (Array.isArray(rawProducts)) {
-    parsedProducts = [...rawProducts];
-  } else if (typeof rawProducts === 'string') {
-    // Strip {}, [], and quotes, then split by comma into distinct items
-    parsedProducts = rawProducts
-      .replace(/^[{\[]|[}\]]$/g, '')
-      .replace(/"/g, '')
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean);
-  } else if (rawProducts) {
-    parsedProducts = [String(rawProducts)];
+  const raw = existingVisit?.products_found;
+  if (Array.isArray(raw)) {
+    parsedProducts = [...raw];
+  } else if (typeof raw === 'string') {
+    parsedProducts = raw.replace(/^[{\[]|[}\]]$/g,'').replace(/"/g,'').split(',').map(s => s.trim()).filter(Boolean);
   }
-  
   state.editProducts = parsedProducts;
 
   state.editDate = existingVisit ? existingVisit.visit_date?.slice(0,10) : getTodayString();
@@ -748,10 +769,26 @@ async function handleClick(e) {
     state.screen = 'main';
     render();
   } else if (action === 'switch-user') {
+    // Prevent the row click from firing when the delete button inside it was clicked
+    if (e.target.closest('[data-action="delete-user"]')) return;
     state.currentUser = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
     state.modal = null;
     showToast(`Switched to ${state.currentUser.name}`);
     render();
+  } else if (action === 'delete-user') {
+    e.stopPropagation();
+    if (!isAdmin()) return;
+    const id = parseInt(e.currentTarget.dataset.id);
+    const name = e.currentTarget.dataset.name;
+    const logCount = parseInt(e.currentTarget.dataset.logs);
+    const warning = logCount > 0
+      ? `Delete ${name}? They have ${logCount} visit log${logCount !== 1 ? 's' : ''} which will become unattributed. This cannot be undone.`
+      : `Delete ${name}? This cannot be undone.`;
+    if (!confirm(warning)) return;
+    if (await deleteUser(id)) {
+      showToast(`${name} deleted`);
+      render();
+    }
   } else if (action === 'open-account-switcher') {
     state.modal = 'accounts'; render();
   } else if (action === 'show-add-user') {
@@ -783,10 +820,9 @@ async function handleClick(e) {
     state.modal = 'store'; render();
   } else if (action === 'open-log-visit') {
     const storeId = parseInt(e.currentTarget.dataset.id);
-    // If logs modal is open, close it first then re-open with visit modal stacked on top
     const prevLogsStore = state.viewLogsStoreId;
     openVisitModal(storeId);
-    if (prevLogsStore) state.viewLogsStoreId = prevLogsStore; // keep logs context
+    if (prevLogsStore) state.viewLogsStoreId = prevLogsStore;
     render();
   } else if (action === 'open-logs') {
     state.viewLogsStoreId = parseInt(e.currentTarget.dataset.id);
@@ -806,7 +842,6 @@ async function handleClick(e) {
     if (!confirm('Delete this visit log? This cannot be undone.')) return;
     if (await deleteVisit(id)) {
       showToast('Visit deleted');
-      // Stay on logs modal if there are remaining visits
       const remaining = state.visits.filter(v => v.store_id === state.viewLogsStoreId);
       if (remaining.length === 0) state.modal = null;
       render();
@@ -856,7 +891,6 @@ async function handleClick(e) {
     }
   } else if (action === 'close-modal' || action === 'close-modal-overlay') {
     if (action === 'close-modal-overlay' && e.target !== e.currentTarget) return;
-    // If we were in visit modal and came from logs, go back to logs
     if (state.modal === 'visit' && state.viewLogsStoreId) {
       state.modal = 'logs'; state.editVisitId = null; render(); return;
     }
@@ -866,14 +900,11 @@ async function handleClick(e) {
     const address = document.getElementById('route-start-address')?.value.trim();
     const city = document.getElementById('route-start-city')?.value.trim();
     const stateVal = document.getElementById('route-start-state')?.value.trim();
-
     if (!day) { showToast('Select a day first', 'error'); return; }
-
-    state.routeDay = day; 
+    state.routeDay = day;
     state.routeStartAddress = address;
     state.routeStartCity = city;
     state.routeStartState = stateVal;
-
     const eligible = state.stores.filter(s => {
       const hasDay = state.confirmedDays.some(d => d.store_id === s.id && d.day === day) || state.potentialDays.some(d => d.store_id === s.id && d.day === day);
       return hasDay && (s.address || s.city);
