@@ -373,7 +373,7 @@ function renderStores() {
   <div class="page-header">
     <div>
       <h1 class="page-title">Stores</h1>
-      <p class="page-sub">${filtered.length} location${filtered.length !== 1 ? 's' : ''}</p>
+      <p class="page-sub">${filtered.length} Location${filtered.length !== 1 ? 's' : ''}</p>
     </div>
     <button class="btn btn-primary" data-action="open-add-store">+ Add store</button>
   </div>
@@ -465,10 +465,10 @@ function renderLogsModal() {
       <div class="modal-header">
         <div>
           <h2 class="modal-title">${esc(store.name)}</h2>
-          <p class="modal-sub">
-            Visit history · ${logs.length} log${logs.length !== 1 ? 's' : ''}
-            ${hasLocation ? `· <a href="${mapsUrl(store)}" target="_blank" class="modal-maps-link">📍 Open in Maps</a>` : ''}
-          </p>
+            <div class="modal-sub" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <span>Visit history · ${logs.length} log${logs.length !== 1 ? 's' : ''}</span>
+              ${hasLocation ? `<a href="${mapsUrl(store)}" target="_blank" style="text-decoration: none; color: inherit;"><span class="tag tag-price">📍 Maps</span></a>` : ''}
+            </div>
         </div>
         <button class="modal-close" data-action="close-modal">✕</button>
       </div>
@@ -636,8 +636,8 @@ function renderRoute() {
   return `
   <div class="page-header">
     <div>
-      <h1 class="page-title">Route planner</h1>
-      <p class="page-sub">Build a run for a given day</p>
+      <h1 class="page-title">Route Planner</h1>
+      <p class="page-sub">Plan a Route For a Specific Day</p>
     </div>
   </div>
   <div class="route-setup">
