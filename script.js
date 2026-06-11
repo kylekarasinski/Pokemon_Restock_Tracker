@@ -1,15 +1,30 @@
 // ─── CONFIG ───────────────────────────────────────────────────
 const SUPABASE_URL = 'https://yhdjasgtuifpywxaxwab.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InloZGphc2d0dWlmcHl3eGF4d2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMzU1MzQsImV4cCI6MjA5NjcxMTUzNH0.z3YygKIRZIwZ5y3bLnwLsVVRIW8uJ1UX9-0aM2fCyuA';
+const ADMIN_NAME = 'kyle'; // case-insensitive match
 // ──────────────────────────────────────────────────────────────
 
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-const PRICE_LABELS = { low_msrp: 'Low MSRP', at_msrp: 'At MSRP', above_msrp: 'Above MSRP', borderline_scalper_price: 'Borderline Scalper Price', scalper_price: 'Scalper Price' };
+const PRICE_LABELS = {
+  low_msrp: 'Low MSRP',
+  at_msrp: 'At MSRP',
+  above_msrp: 'Above MSRP',
+  borderline_scalper_price: 'Borderline Scalper',
+  scalper_price: 'Scalper Price'
+};
 const AVATAR_COLORS = ['#a855f7','#22c55e','#f97316','#3b82f6','#ec4899','#14b8a6'];
-const PRODUCT_TYPES = ['Sleeved Boosters', 'Blisters (1-3 Pack)', 'Booster Bundles', 'ETBs', 'Tins / Mini Tins', 'Collection Boxes'];
+const PRODUCT_TYPES = ['Sleeved Boosters','Blisters (1-3 Pack)','Booster Bundles','ETBs','Tins / Mini Tins','Collection Boxes'];
 
 let db = null;
-const IS_DEMO = SUPABASE_URL === 'YOUR_SUPABASE_URL'; 
+const IS_DEMO = SUPABASE_URL === 'YOUR_SUPABASE_URL';
+
+function isAdmin() {
+  return (state.currentUser?.name || '').toLowerCase() === ADMIN_NAME;
+}
+
+function canEditVisit(visit) {
+  return isAdmin() || visit.user_id === state.currentUser?.id;
+}
 
 let state = {
   screen: 'login',
@@ -23,15 +38,20 @@ let state = {
   timeBounds: [],
   filterDay: 'all',
   filterSearch: '',
+  filterDay: 'all',
+  filterCity: 'all', 
+  filterSearch: '',
   modal: null,
-  
+
   editStore: null,
   editConfirmed: [],
   editPotential: [],
   editEarly: '',
   editLate: '',
-  
-  editVisit: null,
+
+  editVisit: null,         // store_id when logging new; visit object when editing existing
+  editVisitId: null,       // id of the visit row being edited (null = new)
+  editVisitStoreId: null,  // store_id context for the visit modal
   editQuality: 0,
   editAmount: 0,
   editVariety: 0,
@@ -39,16 +59,20 @@ let state = {
   editDate: '',
   editPrices: '',
   editNotes: '',
-  
+
+  viewLogsStoreId: null,   // store whose visit log modal is open
   routeDay: '',
-  routeStart: '',
+  routeStartAddress: '',
+  routeStartCity: '',
+  routeStartState: '',
   routeResult: null,
   addingUser: false,
 };
 
+// ─── DB ───────────────────────────────────────────────────────
 function initDB() {
   if (IS_DEMO) return null;
-  try { return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } 
+  try { return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
   catch(e) { return null; }
 }
 
@@ -89,7 +113,6 @@ async function saveStore(payload, confirmedDays, potentialDays, timeBound) {
       const { error: e0 } = await db.from('Location').update(payload).eq('id', state.editStore.id);
       if (e0) throw e0;
       storeId = state.editStore.id;
-      
       const { error: d1 } = await db.from('Confirmed_Restock_Day').delete().eq('store_id', storeId);
       if (d1) throw d1;
       const { error: d2 } = await db.from('Unconfirmed_Restock_Day').delete().eq('store_id', storeId);
@@ -101,7 +124,6 @@ async function saveStore(payload, confirmedDays, potentialDays, timeBound) {
       if (e0) throw e0;
       storeId = data.id;
     }
-    
     if (confirmedDays.length) {
       const { error: e1 } = await db.from('Confirmed_Restock_Day').insert(confirmedDays.map(day => ({ store_id: storeId, day })));
       if (e1) throw e1;
@@ -114,28 +136,40 @@ async function saveStore(payload, confirmedDays, potentialDays, timeBound) {
       const { error: e3 } = await db.from('Restock_Time_Bound').insert([{ store_id: storeId, early_bound: timeBound.early || null, late_bound: timeBound.late || null }]);
       if (e3) throw e3;
     }
-    
     await loadAll();
     return true;
-  } catch(e) { 
+  } catch(e) {
     console.error(e);
-    showToast(e.message || 'Database error while saving store', 'error'); 
-    return false; 
+    showToast(e.message || 'Database error while saving store', 'error');
+    return false;
   }
 }
 
 async function saveVisit(payload) {
   if (IS_DEMO) return true;
   try {
-    const { error } = await db.from('Visit_Log').insert([payload]);
-    if (error) throw error;
+    if (state.editVisitId) {
+      const { error } = await db.from('Visit_Log').update(payload).eq('id', state.editVisitId);
+      if (error) throw error;
+    } else {
+      const { error } = await db.from('Visit_Log').insert([payload]);
+      if (error) throw error;
+    }
     await loadAll();
     return true;
-  } catch(e) { 
+  } catch(e) {
     console.error(e);
-    showToast(e.message || 'Database error while saving visit', 'error'); 
-    return false; 
+    showToast(e.message || 'Database error while saving visit', 'error');
+    return false;
   }
+}
+
+async function deleteVisit(id) {
+  if (IS_DEMO) return true;
+  const { error } = await db.from('Visit_Log').delete().eq('id', id);
+  if (error) { showToast(error.message, 'error'); return false; }
+  await loadAll();
+  return true;
 }
 
 async function deleteStore(id) {
@@ -146,24 +180,34 @@ async function deleteStore(id) {
   return true;
 }
 
+// ─── HELPERS ──────────────────────────────────────────────────
 function initials(name) { return (name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2); }
-function avatarColor(name) { let hash = 0; for (let c of (name||'')) hash = (hash << 5) - hash + c.charCodeAt(0); return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]; }
+function avatarColor(name) { let h = 0; for (let c of (name||'')) h = (h << 5) - h + c.charCodeAt(0); return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]; }
 function stars(n) { return Array.from({length:5}, (_,i) => `<span class="star ${i < n ? 'star-on' : 'star-off'}">★</span>`).join(''); }
 function formatTime(t) { if (!t) return null; const [h, m] = t.split(':'); const hr = parseInt(h); return `${hr > 12 ? hr-12 : hr || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`; }
-function esc(s) { return (s||'').replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"'); }
-function getTodayString() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');}
+function getTodayString() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function userName(userId) {
+  const u = state.users.find(u => u.id === userId);
+  return u ? u.name : 'Unknown';
+}
 
 let toastTimer = null;
+let searchTimeout = null;
 function showToast(msg, type = 'success') {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.className = `toast show ${type}`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.className = 'toast', 4500); // Extended time so you can read errors
+  toastTimer = setTimeout(() => el.className = 'toast', 4000);
 }
 
-// ─── STATE MEMORY ─────────────────────────────────────────────
-// Grabs all inputs right before a visual redraw so nothing is wiped
+// ─── CAPTURE ──────────────────────────────────────────────────
 function captureModalState() {
   if (state.modal === 'store') {
     const n = document.getElementById('f-name'); if (n) state.editStore.name = n.value;
@@ -180,31 +224,45 @@ function captureModalState() {
 
 // ─── RENDER ───────────────────────────────────────────────────
 function render() {
+  const searchWasFocused = document.activeElement?.dataset?.action === 'search';
+  const searchCursor = searchWasFocused ? document.activeElement.selectionStart : null;
+
   document.getElementById('app').innerHTML = state.screen === 'login' ? renderLogin() : renderMain();
   attachEvents();
+
+  if (searchWasFocused) {
+    const el = document.querySelector('[data-action="search"]');
+    if (el) { el.focus(); if (searchCursor !== null) el.setSelectionRange(searchCursor, searchCursor); }
+  }
 }
 
 function renderLogin() {
   return `
   <div class="login-wrap">
-    <div class="login-header">
-      <div class="login-title">🃏 Restock Tracker</div>
-      <div class="login-sub">Pokemon card store manager</div>
+    <div class="login-brand">
+      <span class="brand-mono">RESTOCK</span>
+      <span class="brand-dot-lg"></span>
+      <span class="brand-mono">TRACKER</span>
     </div>
+    <p class="login-sub">Pokemon Card Restock Manager</p>
     <div class="login-card">
-      <div class="login-card-title">Who's accessing?</div>
+      <p class="login-card-label">Select profile</p>
       <div class="user-list">
         ${state.users.map(u => `
           <div class="user-row" data-action="select-user" data-id="${u.id}">
             <div class="avatar" style="background:${avatarColor(u.name)}">${initials(u.name)}</div>
-            <div><div class="user-row-name">${esc(u.name)}</div><div class="user-row-sub">Tap to continue</div></div>
+            <div>
+              <div class="user-row-name">${esc(u.name)}</div>
+              <div class="user-row-sub">Continue as ${esc(u.name)}</div>
+            </div>
           </div>`).join('')}
         ${state.addingUser ? `
           <div class="add-user-form">
-            <input type="text" id="new-user-input" placeholder="Your name..." style="flex:1" autofocus />
-            <button class="btn btn-accent" data-action="create-user">Add</button>
+            <input type="text" id="new-user-input" placeholder="Your name..." autofocus />
+            <button class="btn btn-primary" data-action="create-user">Add</button>
             <button class="btn btn-ghost" data-action="cancel-add-user">Cancel</button>
-          </div>` : `<div class="add-user-row" data-action="show-add-user"><span>+</span> Add profile</div>`}
+          </div>` :
+          `<div class="add-user-row" data-action="show-add-user">+ Add profile</div>`}
       </div>
     </div>
   </div>`;
@@ -213,116 +271,217 @@ function renderLogin() {
 function renderMain() {
   return `
   <div id="app-inner">
-    <div class="topbar">
-      <div class="topbar-brand"><div class="brand-dot"></div>Restock Tracker</div>
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="brand-mono topbar-brand">RESTOCK<span class="brand-sep">·</span>TRACKER</span>
+      </div>
       <nav class="nav">
-        <button class="nav-btn ${state.tab==='stores'?'active':''}" data-action="tab" data-tab="stores"><span class="nav-dot"></span> Stores</button>
-        <button class="nav-btn ${state.tab==='route'?'active':''}" data-action="tab" data-tab="route"><span class="nav-dot"></span> Route</button>
-        <button class="nav-btn ${state.tab==='accounts'?'active':''}" data-action="tab" data-tab="accounts"><span class="nav-dot"></span> Accounts</button>
+        <button class="nav-btn ${state.tab==='stores'?'active':''}" data-action="tab" data-tab="stores">Stores</button>
+        <button class="nav-btn ${state.tab==='route'?'active':''}" data-action="tab" data-tab="route">Route</button>
       </nav>
       <div class="topbar-right">
-        <div class="user-chip" data-action="logout">
-          <div class="avatar" style="background:${avatarColor(state.currentUser?.name)};width:26px;height:26px;font-size:11px">${initials(state.currentUser?.name)}</div>
+        <button class="user-chip" data-action="open-account-switcher">
+          <div class="avatar-sm" style="background:${avatarColor(state.currentUser?.name)}">${initials(state.currentUser?.name)}</div>
           <span class="user-chip-name">${esc(state.currentUser?.name)}</span>
-        </div>
+          ${isAdmin() ? '<span class="admin-badge">admin</span>' : ''}
+          <span class="chip-caret">⌄</span>
+        </button>
       </div>
-    </div>
-    <div class="content">
-      ${state.tab === 'stores' ? renderStores() : state.tab === 'route' ? renderRoute() : renderAccounts()}
-    </div>
-    ${state.modal === 'store' ? renderStoreModal() : state.modal === 'visit' ? renderVisitModal() : ''}
+    </header>
+    <main class="content">
+      ${state.tab === 'stores' ? renderStores() : renderRoute()}
+    </main>
+    ${renderModal()}
   </div>`;
 }
 
-function renderAccounts() {
+function renderModal() {
+  if (state.modal === 'store') return renderStoreModal();
+  if (state.modal === 'visit') return renderVisitModal();
+  if (state.modal === 'accounts') return renderAccountsModal();
+  if (state.modal === 'logs') return renderLogsModal();
+  return '';
+}
+
+function renderAccountsModal() {
   return `
-  <div class="view-header"><div class="view-title">Manage Accounts</div></div>
-  <div class="login-card" style="margin: 0; max-width: 500px;">
-    <div class="user-list">
-      ${state.users.map(u => `
-        <div class="user-row" data-action="switch-user" data-id="${u.id}" style="${state.currentUser?.id === u.id ? 'border-color:var(--accent-border); background:var(--accent-bg)' : ''}">
-          <div class="avatar" style="background:${avatarColor(u.name)}">${initials(u.name)}</div>
-          <div>
-            <div class="user-row-name">${esc(u.name)} ${state.currentUser?.id === u.id ? '<span style="color:var(--accent); font-size:12px; margin-left:6px">(Active)</span>' : ''}</div>
-            <div class="user-row-sub">Tap to switch</div>
-          </div>
-        </div>`).join('')}
-      ${state.addingUser ? `
-        <div class="add-user-form">
-          <input type="text" id="new-user-input" placeholder="Your name..." style="flex:1" autofocus />
-          <button class="btn btn-accent" data-action="create-user">Add</button>
-          <button class="btn btn-ghost" data-action="cancel-add-user">Cancel</button>
-        </div>` : `<div class="add-user-row" data-action="show-add-user"><span>+</span> Create new account</div>`}
+  <div class="modal-overlay" data-action="close-modal-overlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2 class="modal-title">Switch profile</h2>
+      </div>
+      <div class="user-list">
+        ${state.users.map(u => `
+          <div class="user-row ${state.currentUser?.id === u.id ? 'user-row--active' : ''}" data-action="switch-user" data-id="${u.id}">
+            <div class="avatar" style="background:${avatarColor(u.name)}">${initials(u.name)}</div>
+            <div>
+              <div class="user-row-name">${esc(u.name)}${state.currentUser?.id === u.id ? ' <span class="active-tag">active</span>' : ''}</div>
+              <div class="user-row-sub">${state.currentUser?.id === u.id ? 'Currently signed in' : 'Switch to this profile'}</div>
+            </div>
+          </div>`).join('')}
+        ${state.addingUser ? `
+          <div class="add-user-form">
+            <input type="text" id="new-user-input" placeholder="Your name..." autofocus />
+            <button class="btn btn-primary" data-action="create-user">Add</button>
+            <button class="btn btn-ghost" data-action="cancel-add-user">Cancel</button>
+          </div>` :
+          `<div class="add-user-row" data-action="show-add-user">+ New profile</div>`}
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-action="logout">Sign out</button>
+        <button class="btn btn-ghost" data-action="close-modal">Close</button>
+      </div>
     </div>
   </div>`;
 }
 
 function renderStores() {
+  const uniqueCities = [...new Set(state.stores.map(s => s.city).filter(Boolean))].sort();
+
   const filtered = state.stores.filter(s => {
     const conf = state.confirmedDays.filter(d => d.store_id === s.id).map(d => d.day);
     const pot = state.potentialDays.filter(d => d.store_id === s.id).map(d => d.day);
     const dayMatch = state.filterDay === 'all' || conf.includes(state.filterDay) || pot.includes(state.filterDay);
+    const cityMatch = state.filterCity === 'all' || s.city === state.filterCity;
     const q = state.filterSearch.toLowerCase();
     const searchMatch = !q || s.name.toLowerCase().includes(q) || (s.address||'').toLowerCase().includes(q) || (s.city||'').toLowerCase().includes(q);
-    return dayMatch && searchMatch;
+
+    return dayMatch && cityMatch && searchMatch;
   });
 
   return `
-  <div class="view-header">
-    <div class="view-title">Stores <span class="view-count">${filtered.length}</span></div>
-    <button class="btn btn-accent" data-action="open-add-store">+ Add store</button>
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Stores</h1>
+      <p class="page-sub">${filtered.length} location${filtered.length !== 1 ? 's' : ''}</p>
+    </div>
+    <button class="btn btn-primary" data-action="open-add-store">+ Add store</button>
   </div>
   <div class="filter-bar">
-    <input type="text" placeholder="Search stores..." value="${esc(state.filterSearch)}" data-action="search" style="width:220px" />
-    <select data-action="filter-day">
+    <input type="text" placeholder="Search stores..." value="${esc(state.filterSearch)}" data-action="search" class="filter-input" />
+    <select data-action="filter-day" class="filter-select">
       <option value="all" ${state.filterDay==='all'?'selected':''}>All days</option>
       ${DAYS.map(d => `<option value="${d}" ${state.filterDay===d?'selected':''}>${d}</option>`).join('')}
     </select>
+    <select data-action="filter-city" class="filter-select">
+      <option value="all" ${state.filterCity==='all'?'selected':''}>All cities</option>
+      ${uniqueCities.map(c => `<option value="${esc(c)}" ${state.filterCity===c?'selected':''}>${esc(c)}</option>`).join('')}
+    </select>
   </div>
   ${filtered.length === 0
-    ? `<div class="empty"><div class="empty-icon">🏪</div><div class="empty-title">No stores found</div></div>`
-    : `<div class="stores-list">${filtered.map(s => renderStoreCard(s)).join('')}</div>`}`;
+    ? `<div class="empty-state"><p class="empty-title">No stores found</p><p class="empty-sub">Try a different search or add a new store.</p></div>`
+    : `<div class="stores-grid">${filtered.map(s => renderStoreCard(s)).join('')}</div>`}`;
 }
 
 function renderStoreCard(s) {
   const conf = state.confirmedDays.filter(d => d.store_id === s.id);
   const pot = state.potentialDays.filter(d => d.store_id === s.id);
   const tb = state.timeBounds.find(t => t.store_id === s.id);
-  const locationString = [s.address, s.city].filter(Boolean).join(', ');
-  const latestVisit = state.visits.filter(v => v.store_id === s.id).sort((a,b) => new Date(b.visit_date) - new Date(a.visit_date))[0];
+  const location = [s.address, s.city].filter(Boolean).join(', ');
+  const storeVisits = state.visits.filter(v => v.store_id === s.id).sort((a,b) => new Date(b.visit_date) - new Date(a.visit_date));
+  const latest = storeVisits[0];
 
   return `
   <div class="store-card">
-    <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom: 16px;">
-      <div>
-        <div class="store-name">${esc(s.name)}</div>
-        ${locationString ? `<div style="color:var(--text-muted); font-size: 0.95rem;">📍 ${esc(locationString)}</div>` : ''}
+    <div class="store-card-top">
+      <div class="store-card-info">
+        <h3 class="store-name">${esc(s.name)}</h3>
+        ${location ? `<p class="store-location">${esc(location)}</p>` : ''}
       </div>
-      <div style="display:flex; gap: 8px;">
-        <button class="btn btn-ghost" data-action="edit-store" data-id="${s.id}">Edit</button>
-        <button class="btn btn-accent" data-action="open-log-visit" data-id="${s.id}">Log Visit</button>
+      <div class="store-card-actions">
+        <button class="btn btn-ghost btn-sm" data-action="edit-store" data-id="${s.id}">Edit</button>
+        <button class="btn btn-primary btn-sm" data-action="open-log-visit" data-id="${s.id}">Log visit</button>
       </div>
     </div>
-    
-    <div style="display:flex; flex-direction:column; gap:12px;">
-      <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-        <span style="font-weight: 600; color: var(--text-muted); font-size: 0.85rem; margin-right: 4px;">RESTOCK DAYS:</span>
-        ${conf.map(d => `<span class="pill pill-confirmed">CONFIRMED: ${d.day}</span>`).join('')}
-        ${pot.map(d => `<span class="pill pill-potential">POSSIBLE: ${d.day}</span>`).join('')}
-        ${tb ? `<span class="pill pill-time">⏰ ${formatTime(tb.early_bound)} – ${formatTime(tb.late_bound)}</span>` : ''}      </div>
-      
-      ${latestVisit ? `
-        <div style="background: var(--bg-app); padding: 16px; border-radius: 8px; border-left: 4px solid var(--primary);">
-          <div style="font-size: 0.75rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; margin-bottom: 8px;">
-            Latest Log: ${latestVisit.visit_date}
-          </div>
-          <div style="display:flex; gap:16px; margin-bottom: 8px;">
-            <span>Quality: ${stars(latestVisit.inventory_quality)}</span>
-            <span>Amount: ${stars(latestVisit.inventory_amount)}</span>
-          </div>
-          ${latestVisit.notes ? `<div style="font-size: 0.9rem; font-style:italic;">"${esc(latestVisit.notes)}"</div>` : ''}
+
+    <div class="restock-section">
+      <span class="field-label">Restock days</span>
+      <div class="tag-row">
+        ${conf.map(d => `<span class="tag tag-confirmed">✓ ${d.day}</span>`).join('')}
+        ${pot.map(d => `<span class="tag tag-potential">~ ${d.day}</span>`).join('')}
+        ${(!conf.length && !pot.length) ? `<span class="tag-none">Not set</span>` : ''}
+        ${tb ? `<span class="tag tag-time">${formatTime(tb.early_bound)} – ${formatTime(tb.late_bound)}</span>` : ''}
+      </div>
+    </div>
+
+    ${latest ? `
+      <div class="latest-visit">
+        <div class="latest-visit-meta">
+          <span class="field-label">Last visit</span>
+          <span class="visit-meta-right">
+            <span class="visit-by">${esc(userName(latest.user_id))}</span>
+            <span class="visit-date">${formatDate(latest.visit_date)}</span>
+          </span>
         </div>
-      ` : ''}
+        <div class="ratings-row">
+          ${latest.inventory_quality ? `<div class="rating-col"><span class="rating-label">Quality</span><div class="stars-sm">${stars(latest.inventory_quality)}</div></div>` : ''}
+          ${latest.inventory_amount ? `<div class="rating-col"><span class="rating-label">Amount</span><div class="stars-sm">${stars(latest.inventory_amount)}</div></div>` : ''}
+          ${latest.inventory_variety ? `<div class="rating-col"><span class="rating-label">Variety</span><div class="stars-sm">${stars(latest.inventory_variety)}</div></div>` : ''}
+          ${latest.prices ? `<div class="rating-col"><span class="rating-label">Pricing</span><span class="price-tag">${PRICE_LABELS[latest.prices] || latest.prices}</span></div>` : ''}
+        </div>
+        ${latest.notes ? `<p class="visit-notes">${esc(latest.notes)}</p>` : ''}
+        ${storeVisits.length > 0 ? `<button class="view-logs-btn" data-action="open-logs" data-id="${s.id}">View all ${storeVisits.length} visit${storeVisits.length !== 1 ? 's' : ''} →</button>` : ''}
+      </div>
+    ` : `
+      <div class="no-visits">
+        <span class="no-visits-text">No visits logged yet</span>
+        <button class="view-logs-btn" data-action="open-log-visit" data-id="${s.id}">Log first visit →</button>
+      </div>
+    `}
+  </div>`;
+}
+
+function renderLogsModal() {
+  const store = state.stores.find(s => s.id === state.viewLogsStoreId);
+  if (!store) return '';
+  const logs = state.visits.filter(v => v.store_id === store.id).sort((a,b) => new Date(b.visit_date) - new Date(a.visit_date));
+
+  return `
+  <div class="modal-overlay" data-action="close-modal-overlay">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">${esc(store.name)}</h2>
+          <p class="modal-sub">Visit history · ${logs.length} log${logs.length !== 1 ? 's' : ''}</p>
+        </div>
+        <button class="modal-close" data-action="close-modal">✕</button>
+      </div>
+
+      ${logs.length === 0 ? `<div class="empty-state"><p class="empty-title">No visits logged yet</p></div>` : `
+      <div class="logs-list">
+        ${logs.map(v => {
+          const canEdit = canEditVisit(v);
+          const products = Array.isArray(v.products_found) ? v.products_found : (v.products_found ? [String(v.products_found)] : []);
+
+          return `
+          <div class="log-row">
+            <div class="log-row-header">
+              <div class="log-row-meta">
+                <span class="log-date">${formatDate(v.visit_date)}</span>
+                <span class="log-by">by ${esc(userName(v.user_id))}</span>
+                ${v.prices ? `<span class="tag tag-price">${PRICE_LABELS[v.prices] || v.prices}</span>` : ''}
+              </div>
+              ${canEdit ? `
+              <div class="log-row-actions">
+                <button class="btn btn-ghost btn-xs" data-action="edit-visit-log" data-id="${v.id}">Edit</button>
+                <button class="btn btn-danger btn-xs" data-action="delete-visit-log" data-id="${v.id}">Delete</button>
+              </div>` : ''}
+            </div>
+            <div class="log-ratings">
+              ${v.inventory_quality ? `<div class="rating-col"><span class="rating-label">Quality</span><div class="stars-sm">${stars(v.inventory_quality)}</div></div>` : ''}
+              ${v.inventory_amount ? `<div class="rating-col"><span class="rating-label">Amount</span><div class="stars-sm">${stars(v.inventory_amount)}</div></div>` : ''}
+              ${v.inventory_variety ? `<div class="rating-col"><span class="rating-label">Variety</span><div class="stars-sm">${stars(v.inventory_variety)}</div></div>` : ''}
+            </div>
+            ${products.length ? `<div class="log-products">${products.map(p => `<span class="tag tag-product">${esc(p)}</span>`).join('')}</div>` : ''}
+            ${v.notes ? `<p class="log-notes">${esc(v.notes)}</p>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`}
+
+      <div class="modal-footer">
+        <button class="btn btn-primary" data-action="open-log-visit" data-id="${store.id}">+ Log new visit</button>
+        <button class="btn btn-ghost" data-action="close-modal">Close</button>
+      </div>
     </div>
   </div>`;
 }
@@ -332,17 +491,20 @@ function renderStoreModal() {
   return `
   <div class="modal-overlay" data-action="close-modal-overlay">
     <div class="modal">
-      <div class="modal-title">${isEdit ? 'Edit Store Info' : 'Add New Store'}</div>
+      <div class="modal-header">
+        <h2 class="modal-title">${isEdit ? 'Edit store' : 'Add store'}</h2>
+        <button class="modal-close" data-action="close-modal">✕</button>
+      </div>
       <div class="form-group">
-        <label class="form-label">Store name *</label>
+        <label class="form-label">Store name <span class="required">*</span></label>
         <input type="text" class="form-input" id="f-name" value="${esc(state.editStore.name||'')}" placeholder="Target, Walmart, Meijer..." />
       </div>
       <div class="form-row">
-        <div class="form-group" style="flex: 2;">
+        <div class="form-group" style="flex:2">
           <label class="form-label">Address</label>
           <input type="text" class="form-input" id="f-address" value="${esc(state.editStore.address||'')}" placeholder="123 Main St" />
         </div>
-        <div class="form-group" style="flex: 1;">
+        <div class="form-group" style="flex:1">
           <label class="form-label">City</label>
           <input type="text" class="form-input" id="f-city" value="${esc(state.editStore.city||'')}" placeholder="Grand Rapids" />
         </div>
@@ -350,48 +512,55 @@ function renderStoreModal() {
       <div class="form-group">
         <label class="form-label">Confirmed restock days</label>
         <div class="day-grid">
-          ${DAYS.map(d => `<div class="day-toggle ${state.editConfirmed.includes(d)?'selected-confirmed':''}" data-action="toggle-day" data-group="confirmed" data-day="${d}">${d.slice(0,3)}</div>`).join('')}
+          ${DAYS.map(d => `<div class="day-toggle ${state.editConfirmed.includes(d)?'day-confirmed':''}" data-action="toggle-day" data-group="confirmed" data-day="${d}">${d.slice(0,3)}</div>`).join('')}
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Potential restock days</label>
         <div class="day-grid">
-          ${DAYS.map(d => `<div class="day-toggle ${state.editPotential.includes(d)?'selected-potential':''}" data-action="toggle-day" data-group="potential" data-day="${d}">${d.slice(0,3)}</div>`).join('')}
+          ${DAYS.map(d => `<div class="day-toggle ${state.editPotential.includes(d)?'day-potential':''}" data-action="toggle-day" data-group="potential" data-day="${d}">${d.slice(0,3)}</div>`).join('')}
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Expected Time Window</label>
+        <label class="form-label">Expected time window</label>
         <div class="form-row">
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label" style="font-size:11px">Earliest</label>
+          <div class="form-group" style="margin-bottom:0;flex:1">
+            <label class="form-label form-label-sub">Earliest</label>
             <input type="time" class="form-input" id="f-early" value="${esc(state.editEarly)}" />
           </div>
-          <div class="form-group" style="margin-bottom:0">
-            <label class="form-label" style="font-size:11px">Latest</label>
+          <div class="form-group" style="margin-bottom:0;flex:1">
+            <label class="form-label form-label-sub">Latest</label>
             <input type="time" class="form-input" id="f-late" value="${esc(state.editLate)}" />
           </div>
         </div>
       </div>
-      <div class="modal-actions">
-        ${isEdit ? `<button class="btn btn-danger" style="margin-right:auto" data-action="delete-store" data-id="${state.editStore.id}">Delete</button>` : ''}
+      <div class="modal-footer">
+        ${isEdit ? `<button class="btn btn-danger" style="margin-right:auto" data-action="delete-store" data-id="${state.editStore.id}">Delete store</button>` : ''}
         <button class="btn btn-ghost" data-action="close-modal">Cancel</button>
-        <button class="btn btn-accent" data-action="save-store">${isEdit ? 'Save changes' : 'Add store'}</button>
+        <button class="btn btn-primary" data-action="save-store">${isEdit ? 'Save changes' : 'Add store'}</button>
       </div>
     </div>
   </div>`;
 }
 
 function renderVisitModal() {
-  const store = state.stores.find(s => s.id === state.editVisit);
+  const store = state.stores.find(s => s.id === state.editVisitStoreId);
+  const isEdit = !!state.editVisitId;
   return `
   <div class="modal-overlay" data-action="close-modal-overlay">
     <div class="modal">
-      <div class="modal-title">Log Visit — ${esc(store.name)}</div>
-      <div class="form-group">
-        <label class="form-label">Date of Visit</label>
-        <input type="date" class="form-input" id="v-date" value="${esc(state.editDate)}" />
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">${isEdit ? 'Edit visit' : 'Log visit'}</h2>
+          <p class="modal-sub">${esc(store?.name || '')}</p>
+        </div>
+        <button class="modal-close" data-action="close-modal">✕</button>
       </div>
-      <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input type="date" class="form-input" id="v-date" value="${esc(state.editDate)}" style="width:200px" />
+      </div>
+      <div class="ratings-form-row">
         <div class="form-group">
           <label class="form-label">Quality</label>
           <div class="star-picker">${[1,2,3,4,5].map(i => `<span class="star-pick ${i <= state.editQuality ? 'on' : ''}" data-action="set-stars" data-field="editQuality" data-val="${i}">★</span>`).join('')}</div>
@@ -406,34 +575,29 @@ function renderVisitModal() {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">General Pricing</label>
-        <select class="form-input" id="v-prices" style="width: 50%">
-  <option value="">Select...</option>
-  ${Object.entries(PRICE_LABELS).map(([key, label]) => `
-    <option value="${key}" ${state.editPrices === key ? 'selected' : ''}>
-      ${label}
-    </option>
-  `).join('')}
-</select>
+        <label class="form-label">Pricing</label>
+        <select class="form-input" id="v-prices" style="width:240px">
+          <option value="">Select...</option>
+          ${Object.entries(PRICE_LABELS).map(([k, v]) => `<option value="${k}" ${state.editPrices === k ? 'selected' : ''}>${v}</option>`).join('')}
+        </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Products Seen</label>
-        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        <label class="form-label">Products seen</label>
+        <div class="chip-grid">
           ${PRODUCT_TYPES.map(p => `
-            <label class="product-chip ${state.editProducts.includes(p) ? 'selected' : ''}">
-              <input type="checkbox" style="display:none;" value="${p}" ${state.editProducts.includes(p) ? 'checked' : ''} data-action="toggle-product" />
+            <label class="chip ${state.editProducts.includes(p) ? 'chip-on' : ''}">
+              <input type="checkbox" style="display:none" value="${p}" ${state.editProducts.includes(p) ? 'checked' : ''} data-action="toggle-product" />
               ${p}
-            </label>
-          `).join('')}
+            </label>`).join('')}
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Visit Notes</label>
-        <textarea class="form-input" id="v-notes" rows="3">${esc(state.editNotes)}</textarea>
+        <label class="form-label">Notes</label>
+        <textarea class="form-input" id="v-notes" rows="3" placeholder="Anything worth remembering...">${esc(state.editNotes)}</textarea>
       </div>
-      <div class="modal-actions">
+      <div class="modal-footer">
         <button class="btn btn-ghost" data-action="close-modal">Cancel</button>
-        <button class="btn btn-accent" data-action="save-visit">Save Log</button>
+        <button class="btn btn-primary" data-action="save-visit">${isEdit ? 'Save changes' : 'Save log'}</button>
       </div>
     </div>
   </div>`;
@@ -441,91 +605,135 @@ function renderVisitModal() {
 
 function renderRoute() {
   return `
-  <div class="view-header"><div class="view-title">Route planner</div></div>
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Route planner</h1>
+      <p class="page-sub">Build an optimized run for a given day</p>
+    </div>
+  </div>
   <div class="route-setup">
-    <div class="section-label">Plan your run</div>
-    <div class="route-inputs">
-      <div class="form-group">
+    <div class="form-row" style="align-items:flex-end;gap:12px;flex-wrap:wrap">
+      <div class="form-group" style="margin:0;min-width:140px">
         <label class="form-label">Day</label>
         <select class="form-input" id="route-day">
-          <option value="">Pick a day...</option>
+          <option value="">Select day...</option>
           ${DAYS.map(d => `<option value="${d}" ${state.routeDay===d?'selected':''}>${d}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group" style="flex:2;min-width:220px">
-        <label class="form-label">Starting address</label>
-        <input type="text" class="form-input" id="route-start" value="${esc(state.routeStart)}" style="width:100%" />
+      <div class="form-group" style="margin:0;flex:2;min-width:180px">
+        <label class="form-label">Starting Address</label>
+        <input type="text" class="form-input" id="route-start-address" value="${esc(state.routeStartAddress)}" placeholder="123 Main St" />
       </div>
-      <button class="btn btn-accent" data-action="build-route" style="margin-bottom:0">Build route</button>
+      <div class="form-group" style="margin:0;flex:1;min-width:120px">
+        <label class="form-label">City</label>
+        <input type="text" class="form-input" id="route-start-city" value="${esc(state.routeStartCity)}" placeholder="Grand Rapids" />
+      </div>
+      <div class="form-group" style="margin:0;flex:1;min-width:80px">
+        <label class="form-label">State</label>
+        <input type="text" class="form-input" id="route-start-state" value="${esc(state.routeStartState)}" placeholder="MI" />
+      </div>
+      <button class="btn btn-primary" data-action="build-route">Build route</button>
     </div>
   </div>
-  ${state.routeResult ? renderRouteResult() : `<div class="empty"><div class="empty-icon">🗺️</div><div class="empty-title">No route built</div></div>`}`;
+  ${state.routeResult ? renderRouteResult() : `<div class="empty-state"><p class="empty-title">No route built</p><p class="empty-sub">Select a day and hit Build route.</p></div>`}`;
 }
 
 function renderRouteResult() {
   const { stops, day } = state.routeResult;
-  if (!stops.length) return `<div class="empty"><div class="empty-icon">🤷</div><div class="empty-title">No stores on ${esc(day)}</div></div>`;
-  const mapsUrl = 'https://www.google.com/maps/dir/' + [state.routeStart, ...stops.map(s => [s.address, s.city].filter(Boolean).join(', '))].filter(Boolean).map(encodeURIComponent).join('/');
+  if (!stops.length) return `<div class="empty-state"><p class="empty-title">No stores on ${esc(day)}</p><p class="empty-sub">Add restock days to your stores to see them here.</p></div>`;
+  
+  const startLocation = [state.routeStartAddress, state.routeStartCity, state.routeStartState].filter(Boolean).join(', ');
+  const mapsUrl = 'https://www.google.com/maps/dir/' + [startLocation, ...stops.map(s => [s.address, s.city].filter(Boolean).join(', '))].filter(Boolean).map(encodeURIComponent).join('/');
 
   return `
-  <div class="route-header">
-    <div class="route-summary">${stops.length} stop${stops.length!==1?'s':''} on <strong>${esc(day)}</strong></div>
-    <a href="${mapsUrl}" target="_blank" class="gmaps-link">🗺️ Open in Google Maps</a>
-  </div>
-  <div class="route-stops">
-    ${stops.map((s, i) => {
-      const isConf = state.confirmedDays.some(d => d.store_id === s.id && d.day === day);
-      const tb = state.timeBounds.find(t => t.store_id === s.id);
-      return `
-      <div class="route-stop">
-        <div class="stop-num ${i===0?'first':''}">${i+1}</div>
-        <div class="stop-body">
-          <div class="stop-name">${esc(s.name)}</div>
-          <div class="stop-address">${esc([s.address, s.city].filter(Boolean).join(', '))}</div>
-          <div class="stop-tags" style="margin-top: 8px;">
-            <span class="pill ${isConf?'pill-confirmed':'pill-potential'}">${isConf?'✓ Expected':'~ Potential'}</span>
-            ${tb ? `<span class="pill pill-price">🕐 ${formatTime(tb.early_bound)} – ${formatTime(tb.late_bound)}</span>` : ''}
+    <div class="route-result-header" style="display: flex; justify-content: space-between; align-items: center;">
+      <span class="route-summary" style="display: inline-block;">
+        ${stops.length} stop${stops.length!==1?'s':''} on <strong>${esc(day)}</strong>
+      </span>
+      <a href="${mapsUrl}" target="_blank" class="btn btn-ghost btn-sm">Open in Google Maps ↗</a>
+    </div>
+    <div class="route-stops">
+      ${stops.map((s, i) => {
+        const isConf = state.confirmedDays.some(d => d.store_id === s.id && d.day === day);
+        const tb = state.timeBounds.find(t => t.store_id === s.id);
+        return `
+        <div class="route-stop">
+          <div class="stop-index ${i===0?'stop-index-first':''}">${i+1}</div>
+          <div class="stop-body">
+            <div class="stop-name">${esc(s.name)}</div>
+            <div class="stop-address">${esc([s.address, s.city].filter(Boolean).join(', '))}</div>
+            <div class="tag-row" style="margin-top:8px">
+              <span class="tag ${isConf?'tag-confirmed':'tag-potential'}">${isConf?'✓ Confirmed':'~ Potential'}</span>
+              ${tb ? `<span class="tag tag-time">${formatTime(tb.early_bound)} – ${formatTime(tb.late_bound)}</span>` : ''}
+            </div>
           </div>
-        </div>
-      </div>`}).join('')}
-  </div>`;
-}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
 
 // ─── EVENTS ───────────────────────────────────────────────────
 function attachEvents() {
-  document.querySelectorAll('[data-action]').forEach(el => el.addEventListener('click', handleClick));
+  document.querySelectorAll('[data-action]').forEach(el => {
+    if (el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.dataset.action === 'search')) return;
+    el.addEventListener('click', handleClick);
+  });
   document.querySelectorAll('[data-action="toggle-product"]').forEach(el => el.addEventListener('change', handleToggleProduct));
+
   const searchEl = document.querySelector('[data-action="search"]');
-  if (searchEl) searchEl.addEventListener('input', e => { state.filterSearch = e.target.value; render(); });
-  const dayFilter = document.querySelector('[data-action="filter-day"]');
-  if (dayFilter) {
-    dayFilter.addEventListener('change', e => {
-      state.filterDay = e.target.value;
-      render();
+  if (searchEl) {
+    searchEl.addEventListener('input', e => {
+      state.filterSearch = e.target.value;
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => render(), 150);
     });
   }
+
+  const dayFilter = document.querySelector('[data-action="filter-day"]');
+  if (dayFilter) dayFilter.addEventListener('change', e => { state.filterDay = e.target.value; render(); });
+
+  const cityFilter = document.querySelector('[data-action="filter-city"]');
+  if (cityFilter) cityFilter.addEventListener('change', e => { state.filterCity = e.target.value; render(); });
+
 }
 
 function handleToggleProduct(e) {
   captureModalState();
   const val = e.target.value;
-  if (e.target.checked) { if (!state.editProducts.includes(val)) state.editProducts.push(val); } 
+  if (e.target.checked) { if (!state.editProducts.includes(val)) state.editProducts.push(val); }
   else { state.editProducts = state.editProducts.filter(p => p !== val); }
   render();
 }
 
+function openVisitModal(storeId, existingVisit = null) {
+  state.editVisitStoreId = storeId;
+  state.editVisitId = existingVisit?.id || null;
+  state.editQuality = existingVisit?.inventory_quality || 0;
+  state.editAmount = existingVisit?.inventory_amount || 0;
+  state.editVariety = existingVisit?.inventory_variety || 0;
+  state.editProducts = existingVisit?.products_found || [];
+  state.editDate = existingVisit ? existingVisit.visit_date?.slice(0,10) : getTodayString();
+  state.editPrices = existingVisit?.prices || '';
+  state.editNotes = existingVisit?.notes || '';
+  state.modal = 'visit';
+}
+
 async function handleClick(e) {
   const action = e.currentTarget.dataset.action;
-  
   if (e.currentTarget.tagName === 'SELECT') return;
+  if (['toggle-day','set-stars'].includes(action)) captureModalState();
 
-  if (['toggle-day', 'set-stars'].includes(action)) captureModalState();
-
-  if (action === 'select-user' || action === 'switch-user') {
+  if (action === 'select-user') {
     state.currentUser = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
-    if (action === 'select-user') state.screen = 'main';
-    else showToast(`Switched to ${state.currentUser.name}`);
+    state.screen = 'main';
     render();
+  } else if (action === 'switch-user') {
+    state.currentUser = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
+    state.modal = null;
+    showToast(`Switched to ${state.currentUser.name}`);
+    render();
+  } else if (action === 'open-account-switcher') {
+    state.modal = 'accounts'; render();
   } else if (action === 'show-add-user') {
     state.addingUser = true; render();
     setTimeout(() => document.getElementById('new-user-input')?.focus(), 50);
@@ -536,11 +744,11 @@ async function handleClick(e) {
     if (!name) return;
     if (await createUser(name)) { state.addingUser = false; showToast(`${name} added`); render(); }
   } else if (action === 'logout') {
-    state.screen = 'login'; state.currentUser = null; state.tab = 'stores'; render();
+    state.screen = 'login'; state.currentUser = null; state.tab = 'stores'; state.modal = null; render();
   } else if (action === 'tab') {
     state.tab = e.currentTarget.dataset.tab; state.routeResult = null; render();
   } else if (action === 'open-add-store') {
-    state.editStore = { name: '', address: '', city: '' };
+    state.editStore = { name:'', address:'', city:'' };
     state.editConfirmed = []; state.editPotential = [];
     state.editEarly = ''; state.editLate = '';
     state.modal = 'store'; render();
@@ -554,13 +762,37 @@ async function handleClick(e) {
     state.editLate = tb.late_bound?.slice(0,5) || '';
     state.modal = 'store'; render();
   } else if (action === 'open-log-visit') {
-    state.editVisit = parseInt(e.currentTarget.dataset.id);
-    state.editQuality = 0; state.editAmount = 0; state.editVariety = 0; state.editProducts = [];
-    state.editDate = getTodayString();
-    state.editPrices = ''; state.editNotes = '';
-    state.modal = 'visit'; render();
+    const storeId = parseInt(e.currentTarget.dataset.id);
+    // If logs modal is open, close it first then re-open with visit modal stacked on top
+    const prevLogsStore = state.viewLogsStoreId;
+    openVisitModal(storeId);
+    if (prevLogsStore) state.viewLogsStoreId = prevLogsStore; // keep logs context
+    render();
+  } else if (action === 'open-logs') {
+    state.viewLogsStoreId = parseInt(e.currentTarget.dataset.id);
+    state.modal = 'logs'; render();
+  } else if (action === 'edit-visit-log') {
+    const id = parseInt(e.currentTarget.dataset.id);
+    const visit = state.visits.find(v => v.id === id);
+    if (!visit || !canEditVisit(visit)) { showToast('You can only edit your own visits', 'error'); return; }
+    const logsStoreId = state.viewLogsStoreId;
+    openVisitModal(visit.store_id, visit);
+    state.viewLogsStoreId = logsStoreId;
+    render();
+  } else if (action === 'delete-visit-log') {
+    const id = parseInt(e.currentTarget.dataset.id);
+    const visit = state.visits.find(v => v.id === id);
+    if (!visit || !canEditVisit(visit)) { showToast('You can only delete your own visits', 'error'); return; }
+    if (!confirm('Delete this visit log? This cannot be undone.')) return;
+    if (await deleteVisit(id)) {
+      showToast('Visit deleted');
+      // Stay on logs modal if there are remaining visits
+      const remaining = state.visits.filter(v => v.store_id === state.viewLogsStoreId);
+      if (remaining.length === 0) state.modal = null;
+      render();
+    }
   } else if (action === 'delete-store') {
-    if (!confirm('Delete this store? This will also delete all historical visit logs.')) return;
+    if (!confirm('Delete this store and all its visit logs?')) return;
     if (await deleteStore(parseInt(e.currentTarget.dataset.id))) { state.modal = null; showToast('Store deleted'); render(); }
   } else if (action === 'set-stars') {
     state[e.currentTarget.dataset.field] = parseInt(e.currentTarget.dataset.val);
@@ -571,27 +803,23 @@ async function handleClick(e) {
     const arr = group === 'confirmed' ? state.editConfirmed : state.editPotential;
     const other = group === 'confirmed' ? state.editPotential : state.editConfirmed;
     const idx = arr.indexOf(day);
-    if (idx === -1) { arr.push(day); const otherIdx = other.indexOf(day); if (otherIdx !== -1) other.splice(otherIdx, 1); } 
+    if (idx === -1) { arr.push(day); const oi = other.indexOf(day); if (oi !== -1) other.splice(oi, 1); }
     else arr.splice(idx, 1);
     render();
   } else if (action === 'save-store') {
     captureModalState();
     if (!state.editStore.name) { showToast('Store name is required', 'error'); return; }
-    const payload = { 
-      name: state.editStore.name, 
-      address: state.editStore.address || null,
-      city: state.editStore.city || null
-    };
+    const payload = { name: state.editStore.name, address: state.editStore.address || null, city: state.editStore.city || null };
     const timeBound = { early: state.editEarly || null, late: state.editLate || null };
-    if (await saveStore(payload, state.editConfirmed, state.editPotential, timeBound)) { 
-      state.modal = null; state.editStore = null; showToast('Store saved'); render(); 
+    if (await saveStore(payload, state.editConfirmed, state.editPotential, timeBound)) {
+      state.modal = null; state.editStore = null; showToast('Store saved'); render();
     }
   } else if (action === 'save-visit') {
     captureModalState();
     const payload = {
-      store_id: state.editVisit,
+      store_id: state.editVisitStoreId,
       user_id: state.currentUser.id,
-      visit_date: new Date().toISOString(),
+      visit_date: state.editDate || getTodayString(),
       inventory_quality: state.editQuality || null,
       inventory_amount: state.editAmount || null,
       inventory_variety: state.editVariety || null,
@@ -599,35 +827,50 @@ async function handleClick(e) {
       products_found: state.editProducts.length > 0 ? state.editProducts : null,
       notes: state.editNotes || null,
     };
-    if (await saveVisit(payload)) { 
-      state.modal = null; state.editVisit = null; showToast('Visit logged successfully!'); render(); 
+    if (await saveVisit(payload)) {
+      const logsStoreId = state.viewLogsStoreId;
+      state.modal = logsStoreId ? 'logs' : null;
+      state.editVisitId = null;
+      showToast(state.editVisitId ? 'Visit updated' : 'Visit logged');
+      render();
     }
   } else if (action === 'close-modal' || action === 'close-modal-overlay') {
     if (action === 'close-modal-overlay' && e.target !== e.currentTarget) return;
-    state.modal = null; state.editStore = null; state.editVisit = null; render();
+    // If we were in visit modal and came from logs, go back to logs
+    if (state.modal === 'visit' && state.viewLogsStoreId) {
+      state.modal = 'logs'; state.editVisitId = null; render(); return;
+    }
+    state.modal = null; state.editStore = null; state.editVisitId = null; state.viewLogsStoreId = null; render();
   } else if (action === 'build-route') {
     const day = document.getElementById('route-day')?.value;
-    const start = document.getElementById('route-start')?.value.trim();
-    if (!day) { showToast('Pick a day first', 'error'); return; }
-    state.routeDay = day; state.routeStart = start;
+    const address = document.getElementById('route-start-address')?.value.trim();
+    const city = document.getElementById('route-start-city')?.value.trim();
+    const stateVal = document.getElementById('route-start-state')?.value.trim();
+
+    if (!day) { showToast('Select a day first', 'error'); return; }
+
+    state.routeDay = day; 
+    state.routeStartAddress = address;
+    state.routeStartCity = city;
+    state.routeStartState = stateVal;
+
     const eligible = state.stores.filter(s => {
-      const conf = state.confirmedDays.filter(d => d.store_id === s.id && d.day === day);
-      const pot = state.potentialDays.filter(d => d.store_id === s.id && d.day === day);
-      return (conf.length || pot.length) && (s.address || s.city);
+      const hasDay = state.confirmedDays.some(d => d.store_id === s.id && d.day === day) || state.potentialDays.some(d => d.store_id === s.id && d.day === day);
+      return hasDay && (s.address || s.city);
     });
     const confirmed = eligible.filter(s => state.confirmedDays.some(d => d.store_id === s.id && d.day === day));
     const potential = eligible.filter(s => !state.confirmedDays.some(d => d.store_id === s.id && d.day === day));
     state.routeResult = { stops: [...confirmed, ...potential], day };
     render();
-  } else if (action === 'filter-day') {
-  state.filterDay = e.currentTarget.value;
-  render();
   }
 }
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Enter' && document.getElementById('new-user-input') === document.activeElement) document.querySelector('[data-action="create-user"]')?.click();
-  if (e.key === 'Escape' && state.modal) { state.modal = null; state.editStore = null; state.editVisit = null; render(); }
+  if (e.key === 'Escape' && state.modal) {
+    if (state.modal === 'visit' && state.viewLogsStoreId) { state.modal = 'logs'; state.editVisitId = null; render(); return; }
+    state.modal = null; state.editStore = null; state.editVisitId = null; state.viewLogsStoreId = null; render();
+  }
 });
 
 async function boot() { db = initDB(); await loadAll(); render(); }
