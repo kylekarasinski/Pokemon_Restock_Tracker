@@ -711,7 +711,27 @@ function openVisitModal(storeId, existingVisit = null) {
   state.editQuality = existingVisit?.inventory_quality || 0;
   state.editAmount = existingVisit?.inventory_amount || 0;
   state.editVariety = existingVisit?.inventory_variety || 0;
-  state.editProducts = existingVisit?.products_found || [];
+
+  // Robustly parse the products to handle strings, Postgres arrays, or JSON arrays
+  let parsedProducts = [];
+  const rawProducts = existingVisit?.products_found;
+  
+  if (Array.isArray(rawProducts)) {
+    parsedProducts = [...rawProducts];
+  } else if (typeof rawProducts === 'string') {
+    // Strip {}, [], and quotes, then split by comma into distinct items
+    parsedProducts = rawProducts
+      .replace(/^[{\[]|[}\]]$/g, '')
+      .replace(/"/g, '')
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
+  } else if (rawProducts) {
+    parsedProducts = [String(rawProducts)];
+  }
+  
+  state.editProducts = parsedProducts;
+
   state.editDate = existingVisit ? existingVisit.visit_date?.slice(0,10) : getTodayString();
   state.editPrices = existingVisit?.prices || '';
   state.editNotes = existingVisit?.notes || '';
