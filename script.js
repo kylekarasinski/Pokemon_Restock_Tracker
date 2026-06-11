@@ -22,6 +22,21 @@ function isAdmin() {
   return (state.currentUser?.name || '').toLowerCase() === ADMIN_NAME;
 }
 
+function setupRealtime() {
+  if (!db) return;
+  
+  db.channel('public-table-changes')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public' },
+      async (payload) => {
+        await loadAll();
+        render();
+      }
+    )
+    .subscribe();
+}
+
 function canEditVisit(visit) {
   return isAdmin() || visit.user_id === state.currentUser?.id;
 }
@@ -466,14 +481,14 @@ function renderLogsModal() {
         <div>
           <h2 class="modal-title">${esc(store.name)}</h2>
             <div class="modal-sub" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-              <span>Visit history · ${logs.length} log${logs.length !== 1 ? 's' : ''}</span>
+              <span>Visit History · ${logs.length} log${logs.length !== 1 ? 's' : ''}</span>
               ${hasLocation ? `<a href="${mapsUrl(store)}" target="_blank" style="text-decoration: none; color: inherit;"><span class="tag tag-price">📍 Maps</span></a>` : ''}
             </div>
         </div>
         <button class="modal-close" data-action="close-modal">✕</button>
       </div>
 
-      ${logs.length === 0 ? `<div class="empty-state"><p class="empty-title">No visits logged yet</p></div>` : `
+      ${logs.length === 0 ? `<div class="empty-state"><p class="empty-title">No Visits Logged Yet</p></div>` : `
       <div class="logs-list">
         ${logs.map(v => {
           const canEdit = canEditVisit(v);
@@ -508,7 +523,7 @@ function renderLogsModal() {
       </div>`}
 
       <div class="modal-footer">
-        <button class="btn btn-primary" data-action="open-log-visit" data-id="${store.id}">+ Log new visit</button>
+        <button class="btn btn-primary" data-action="open-log-visit" data-id="${store.id}">+ Log New Visit</button>
         <button class="btn btn-ghost" data-action="close-modal">Close</button>
       </div>
     </div>
@@ -521,7 +536,7 @@ function renderStoreModal() {
   <div class="modal-overlay" data-action="close-modal-overlay">
     <div class="modal">
       <div class="modal-header">
-        <h2 class="modal-title">${isEdit ? 'Edit store' : 'Add store'}</h2>
+        <h2 class="modal-title">${isEdit ? 'Edit Store' : 'Add Store'}</h2>
         <button class="modal-close" data-action="close-modal">✕</button>
       </div>
       <div class="form-group">
@@ -539,19 +554,19 @@ function renderStoreModal() {
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Confirmed restock days</label>
+        <label class="form-label">Confirmed Restock Days</label>
         <div class="day-grid">
           ${DAYS.map(d => `<div class="day-toggle ${state.editConfirmed.includes(d)?'day-confirmed':''}" data-action="toggle-day" data-group="confirmed" data-day="${d}">${d.slice(0,3)}</div>`).join('')}
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Potential restock days</label>
+        <label class="form-label">Potential Restock Days</label>
         <div class="day-grid">
           ${DAYS.map(d => `<div class="day-toggle ${state.editPotential.includes(d)?'day-potential':''}" data-action="toggle-day" data-group="potential" data-day="${d}">${d.slice(0,3)}</div>`).join('')}
         </div>
       </div>
       <div class="form-group">
-        <label class="form-label">Expected time window</label>
+        <label class="form-label">Expected Time Window</label>
         <div class="form-row">
           <div class="form-group" style="margin-bottom:0;flex:1">
             <label class="form-label form-label-sub">Earliest</label>
@@ -564,9 +579,9 @@ function renderStoreModal() {
         </div>
       </div>
       <div class="modal-footer">
-        ${isEdit ? `<button class="btn btn-danger" style="margin-right:auto" data-action="delete-store" data-id="${state.editStore.id}">Delete store</button>` : ''}
+        ${isEdit ? `<button class="btn btn-danger" style="margin-right:auto" data-action="delete-store" data-id="${state.editStore.id}">Delete Store</button>` : ''}
         <button class="btn btn-ghost" data-action="close-modal">Cancel</button>
-        <button class="btn btn-primary" data-action="save-store">${isEdit ? 'Save changes' : 'Add store'}</button>
+        <button class="btn btn-primary" data-action="save-store">${isEdit ? 'Save Changes' : 'Add Store'}</button>
       </div>
     </div>
   </div>`;
@@ -580,7 +595,7 @@ function renderVisitModal() {
     <div class="modal">
       <div class="modal-header">
         <div>
-          <h2 class="modal-title">${isEdit ? 'Edit visit' : 'Log visit'}</h2>
+          <h2 class="modal-title">${isEdit ? 'Edit Visit' : 'Log Visit'}</h2>
           <p class="modal-sub">${esc(store?.name || '')}</p>
         </div>
         <button class="modal-close" data-action="close-modal">✕</button>
@@ -626,7 +641,7 @@ function renderVisitModal() {
       </div>
       <div class="modal-footer">
         <button class="btn btn-ghost" data-action="close-modal">Cancel</button>
-        <button class="btn btn-primary" data-action="save-visit">${isEdit ? 'Save changes' : 'Save log'}</button>
+        <button class="btn btn-primary" data-action="save-visit">${isEdit ? 'Save Changes' : 'Save Log'}</button>
       </div>
     </div>
   </div>`;
@@ -924,5 +939,5 @@ document.addEventListener('keydown', e => {
   }
 });
 
-async function boot() { db = initDB(); await loadAll(); render(); }
+async function boot() { db = initDB(); await loadAll(); render(); setupRealtime(); }
 boot();
