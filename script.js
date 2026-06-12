@@ -102,7 +102,7 @@ async function loadAll() {
     const [u, s, v, cd, pd, tb] = await Promise.all([
       db.from('Users').select('*').order('name'),
       db.from('Location').select('*').order('name'),
-      db.from('Visit_Log').select('*').order('visit_date', { ascending: false }),
+      db.from('Visit_Log').select('*').order('visit_date', { ascending: false }).order('id', { ascending: false }),
       db.from('Confirmed_Restock_Day').select('*'),
       db.from('Unconfirmed_Restock_Day').select('*'),
       db.from('Restock_Time_Bound').select('*'),
@@ -222,7 +222,9 @@ function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt
 function getTodayString() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function formatDate(iso) {
   if (!iso) return '';
-  const d = new Date(iso);
+  const parts = iso.slice(0, 10).split('-');
+  if (parts.length !== 3) return iso;
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 function userName(userId) {
@@ -461,7 +463,14 @@ function renderStoreCard(s) {
   const pot = state.potentialDays.filter(d => d.store_id === s.id);
   const tb = state.timeBounds.find(t => t.store_id === s.id);
   const location = [s.address, s.city].filter(Boolean).join(', ');
-  const storeVisits = state.visits.filter(v => v.store_id === s.id).sort((a,b) => new Date(b.visit_date) - new Date(a.visit_date));
+const storeVisits = state.visits.filter(v => v.store_id === s.id).sort((a, b) => {
+    const dateA = a.visit_date || '';
+    const dateB = b.visit_date || '';
+    // Use localeCompare for safe string sorting (YYYY-MM-DD string alphabetical order = chronological order)
+    if (dateA !== dateB) return dateB.localeCompare(dateA);
+    // If the dates are perfectly tied, fallback to highest ID
+    return (b.id || 0) - (a.id || 0); 
+  });
   const latest = storeVisits[0];
   const hasLocation = !!(s.address || s.city);
 
@@ -522,7 +531,12 @@ function renderStoreCard(s) {
 function renderLogsModal() {
   const store = state.stores.find(s => s.id === state.viewLogsStoreId);
   if (!store) return '';
-  const logs = state.visits.filter(v => v.store_id === store.id).sort((a,b) => new Date(b.visit_date) - new Date(a.visit_date));
+  const logs = state.visits.filter(v => v.store_id === store.id).sort((a, b) => {
+      const dateA = a.visit_date || '';
+      const dateB = b.visit_date || '';
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
+      return (b.id || 0) - (a.id || 0);
+    });
   const hasLocation = !!(store.address || store.city);
 
   return `
