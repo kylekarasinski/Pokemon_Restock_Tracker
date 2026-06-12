@@ -2,6 +2,7 @@
 const SUPABASE_URL = 'https://yhdjasgtuifpywxaxwab.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InloZGphc2d0dWlmcHl3eGF4d2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMzU1MzQsImV4cCI6MjA5NjcxMTUzNH0.z3YygKIRZIwZ5y3bLnwLsVVRIW8uJ1UX9-0aM2fCyuA';
 const ADMIN_NAME = 'kyle'; // case-insensitive match
+const ADMIN_PASSCODE = 'flygonisthebestpokemon';
 // ──────────────────────────────────────────────────────────────
 
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
@@ -24,16 +25,11 @@ function isAdmin() {
 
 function setupRealtime() {
   if (!db) return;
-  
   db.channel('public-table-changes')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public' },
-      async (payload) => {
-        await loadAll();
-        render();
-      }
-    )
+    .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
+      await loadAll();
+      render();
+    })
     .subscribe();
 }
 
@@ -61,6 +57,10 @@ let state = {
   filterSearch: '',
   modal: null,
 
+  // passcode gate
+  pendingAdminUser: null,
+  passcodeError: false,
+
   editStore: null,
   editConfirmed: [],
   editPotential: [],
@@ -85,6 +85,7 @@ let state = {
   routeStartCity: '',
   routeStartState: '',
   routeResult: null,
+  routeExcludedIds: [],
   addingUser: false,
 };
 
@@ -201,6 +202,10 @@ async function deleteVisit(id) {
 }
 
 async function deleteStore(id) {
+  if (!isAdmin()) {
+    showToast('Only admins can delete stores', 'error');
+    return false;
+  }
   if (IS_DEMO) return true;
   const { error } = await db.from('Location').delete().eq('id', id);
   if (error) { showToast(error.message, 'error'); return false; }
@@ -213,7 +218,7 @@ function initials(name) { return (name || '?').split(' ').map(w => w[0]).join(''
 function avatarColor(name) { let h = 0; for (let c of (name||'')) h = (h << 5) - h + c.charCodeAt(0); return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]; }
 function stars(n) { return Array.from({length:5}, (_,i) => `<span class="star ${i < n ? 'star-on' : 'star-off'}">★</span>`).join(''); }
 function formatTime(t) { if (!t) return null; const [h, m] = t.split(':'); const hr = parseInt(h); return `${hr > 12 ? hr-12 : hr || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`; }
-function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
 function getTodayString() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function formatDate(iso) {
   if (!iso) return '';
@@ -254,6 +259,7 @@ function captureModalState() {
 function render() {
   const searchWasFocused = document.activeElement?.dataset?.action === 'search';
   const searchCursor = searchWasFocused ? document.activeElement.selectionStart : null;
+  const passcodeFocused = document.activeElement?.id === 'passcode-input';
 
   document.getElementById('app').innerHTML = state.screen === 'login' ? renderLogin() : renderMain();
   attachEvents();
@@ -262,9 +268,50 @@ function render() {
     const el = document.querySelector('[data-action="search"]');
     if (el) { el.focus(); if (searchCursor !== null) el.setSelectionRange(searchCursor, searchCursor); }
   }
+  if (passcodeFocused) {
+    document.getElementById('passcode-input')?.focus();
+  }
 }
 
+// ─── LOGIN ────────────────────────────────────────────────────
 function renderLogin() {
+  // Admin passcode gate -- shown after Kyle is selected
+  if (state.pendingAdminUser) {
+    return `
+    <div class="login-wrap">
+      <div class="login-brand">
+        <span class="brand-mono">RESTOCK</span>
+        <span class="brand-dot-lg"></span>
+        <span class="brand-mono">TRACKER</span>
+      </div>
+      <p class="login-sub">Pokemon Card Restock Manager</p>
+      <div class="login-card">
+        <div class="passcode-header">
+          <div class="avatar" style="background:${avatarColor(state.pendingAdminUser.name)}">${initials(state.pendingAdminUser.name)}</div>
+          <div>
+            <p class="passcode-name">${esc(state.pendingAdminUser.name)}</p>
+            <p class="login-card-label" style="margin:0">Admin access required</p>
+          </div>
+        </div>
+        <div class="form-group" style="margin-top: 20px; margin-bottom: 6px;">
+          <label class="form-label">Passcode</label>
+          <input
+            type="password"
+            id="passcode-input"
+            class="form-input ${state.passcodeError ? 'input-error' : ''}"
+            placeholder="Enter admin passcode..."
+            autocomplete="off"
+          />
+          ${state.passcodeError ? `<p class="passcode-error-msg">Incorrect passcode. Try again.</p>` : ''}
+        </div>
+        <div class="passcode-actions">
+          <button class="btn btn-ghost" data-action="cancel-passcode">Back</button>
+          <button class="btn btn-primary" data-action="submit-passcode">Continue</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
   return `
   <div class="login-wrap">
     <div class="login-brand">
@@ -371,6 +418,7 @@ function renderAccountsModal() {
   </div>`;
 }
 
+// ─── STORES ───────────────────────────────────────────────────
 function renderStores() {
   const uniqueCities = [...new Set(state.stores.map(s => s.city).filter(Boolean))].sort();
 
@@ -423,10 +471,12 @@ function renderStoreCard(s) {
       <div class="store-card-info">
         <h3 class="store-name">${esc(s.name)}</h3>
         ${location ? `<p class="store-location">${esc(location)}</p>` : ''}
+        <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px;">Added by ${esc(userName(s.created_by))}</p>
       </div>
       <div class="store-card-actions">
         ${hasLocation ? `<a href="${mapsUrl(s)}" target="_blank" class="btn btn-ghost btn-sm maps-btn" title="Open in Google Maps">📍 Maps</a>` : ''}
         <button class="btn btn-ghost btn-sm" data-action="edit-store" data-id="${s.id}">Edit</button>
+        ${isAdmin() ? `<button class="btn btn-danger btn-sm" data-action="delete-store-card" data-id="${s.id}" title="Delete store">Delete</button>` : ''}
         <button class="btn btn-primary btn-sm" data-action="open-log-visit" data-id="${s.id}">Log visit</button>
       </div>
     </div>
@@ -468,6 +518,7 @@ function renderStoreCard(s) {
   </div>`;
 }
 
+// ─── LOGS MODAL ───────────────────────────────────────────────
 function renderLogsModal() {
   const store = state.stores.find(s => s.id === state.viewLogsStoreId);
   if (!store) return '';
@@ -480,10 +531,10 @@ function renderLogsModal() {
       <div class="modal-header">
         <div>
           <h2 class="modal-title">${esc(store.name)}</h2>
-            <div class="modal-sub" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-              <span>Visit History · ${logs.length} log${logs.length !== 1 ? 's' : ''}</span>
-              ${hasLocation ? `<a href="${mapsUrl(store)}" target="_blank" style="text-decoration: none; color: inherit;"><span class="tag tag-price">📍 Maps</span></a>` : ''}
-            </div>
+          <div class="modal-sub" style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+            <span>Visit History · ${logs.length} log${logs.length !== 1 ? 's' : ''}</span>
+            ${hasLocation ? `<a href="${mapsUrl(store)}" target="_blank" style="text-decoration: none; color: inherit;"><span class="tag tag-price">📍 Maps</span></a>` : ''}
+          </div>
         </div>
         <button class="modal-close" data-action="close-modal">✕</button>
       </div>
@@ -530,6 +581,7 @@ function renderLogsModal() {
   </div>`;
 }
 
+// ─── STORE MODAL ──────────────────────────────────────────────
 function renderStoreModal() {
   const isEdit = !!state.editStore.id;
   return `
@@ -579,7 +631,7 @@ function renderStoreModal() {
         </div>
       </div>
       <div class="modal-footer">
-        ${isEdit ? `<button class="btn btn-danger" style="margin-right:auto" data-action="delete-store" data-id="${state.editStore.id}">Delete Store</button>` : ''}
+        ${(isEdit && isAdmin()) ? `<button class="btn btn-danger" style="margin-right:auto" data-action="delete-store-modal" data-id="${state.editStore.id}">Delete Store</button>` : ''}
         <button class="btn btn-ghost" data-action="close-modal">Cancel</button>
         <button class="btn btn-primary" data-action="save-store">${isEdit ? 'Save Changes' : 'Add Store'}</button>
       </div>
@@ -587,6 +639,7 @@ function renderStoreModal() {
   </div>`;
 }
 
+// ─── VISIT MODAL ──────────────────────────────────────────────
 function renderVisitModal() {
   const store = state.stores.find(s => s.id === state.editVisitStoreId);
   const isEdit = !!state.editVisitId;
@@ -647,6 +700,7 @@ function renderVisitModal() {
   </div>`;
 }
 
+// ─── ROUTE ────────────────────────────────────────────────────
 function renderRoute() {
   return `
   <div class="page-header">
@@ -656,27 +710,27 @@ function renderRoute() {
     </div>
   </div>
   <div class="route-setup">
-    <div class="form-row" style="align-items:flex-end;gap:12px;flex-wrap:wrap">
-      <div class="form-group" style="margin:0;min-width:140px">
+    <div class="route-form-row">
+      <div class="form-group" style="margin:0; flex: 1.2; min-width: 140px;">
         <label class="form-label">Day</label>
         <select class="form-input" id="route-day">
           <option value="">Select day...</option>
           ${DAYS.map(d => `<option value="${d}" ${state.routeDay===d?'selected':''}>${d}</option>`).join('')}
         </select>
       </div>
-      <div class="form-group" style="margin:0;flex:2;min-width:180px">
+      <div class="form-group" style="margin:0; flex: 2.5; min-width: 180px;">
         <label class="form-label">Starting address</label>
         <input type="text" class="form-input" id="route-start-address" value="${esc(state.routeStartAddress)}" placeholder="123 Main St" />
       </div>
-      <div class="form-group" style="margin:0;flex:1;min-width:120px">
+      <div class="form-group" style="margin:0; flex: 1.5; min-width: 120px;">
         <label class="form-label">City</label>
         <input type="text" class="form-input" id="route-start-city" value="${esc(state.routeStartCity)}" placeholder="Grand Rapids" />
       </div>
-      <div class="form-group" style="margin:0;width:70px">
+      <div class="form-group" style="margin:0; width: 70px;">
         <label class="form-label">State</label>
         <input type="text" class="form-input" id="route-start-state" value="${esc(state.routeStartState)}" placeholder="MI" />
       </div>
-      <button class="btn btn-primary" data-action="build-route">Build route</button>
+      <button class="btn btn-primary" data-action="build-route" style="height: 37px;">Build route</button>
     </div>
   </div>
   ${state.routeResult ? renderRouteResult() : `<div class="empty-state"><p class="empty-title">No route built</p><p class="empty-sub">Select a day and hit Build route.</p></div>`}`;
@@ -686,29 +740,47 @@ function renderRouteResult() {
   const { stops, day } = state.routeResult;
   if (!stops.length) return `<div class="empty-state"><p class="empty-title">No stores on ${esc(day)}</p><p class="empty-sub">Add restock days to your stores to see them here.</p></div>`;
 
+  // Filter down to only active stops for the Maps link and count
+  const activeStops = stops.filter(s => !state.routeExcludedIds.includes(s.id));
   const startLocation = [state.routeStartAddress, state.routeStartCity, state.routeStartState].filter(Boolean).join(', ');
-  const googleMapsUrl = 'https://www.google.com/maps/dir/' + [startLocation, ...stops.map(s => [s.address, s.city].filter(Boolean).join(', '))].filter(Boolean).map(encodeURIComponent).join('/');
+  const googleMapsUrl = 'https://www.google.com/maps/dir/' + [startLocation, ...activeStops.map(s => [s.address, s.city].filter(Boolean).join(', '))].filter(Boolean).map(encodeURIComponent).join('/');
 
   return `
   <div class="route-result-header">
-    <span class="route-summary">${stops.length} stop${stops.length!==1?'s':''} on <strong>${esc(day)}</strong></span>
+    <span class="route-summary">${activeStops.length} stop${activeStops.length!==1?'s':''} on <strong>${esc(day)}</strong></span>
     <a href="${googleMapsUrl}" target="_blank" class="btn btn-ghost btn-sm">Open in Google Maps ↗</a>
   </div>
   <div class="route-stops">
-    ${stops.map((s, i) => {
+    ${stops.map((s) => {
+      const isExcluded = state.routeExcludedIds.includes(s.id);
       const isConf = state.confirmedDays.some(d => d.store_id === s.id && d.day === day);
       const tb = state.timeBounds.find(t => t.store_id === s.id);
       const hasLocation = !!(s.address || s.city);
+      
+      // Calculate the dynamic number only for active stops
+      const activeIndex = isExcluded ? null : activeStops.findIndex(x => x.id === s.id) + 1;
+
       return `
-      <div class="route-stop">
-        <div class="stop-index ${i===0?'stop-index-first':''}">${i+1}</div>
+      <div class="route-stop" style="transition: all 0.2s; ${isExcluded ? 'opacity: 0.4;' : ''}">
+        <div class="stop-index ${activeIndex === 1 ? 'stop-index-first' : ''}">
+          ${isExcluded ? '✕' : activeIndex}
+        </div>
         <div class="stop-body">
-          <div class="stop-name">${esc(s.name)}</div>
-          <div class="stop-address">${esc([s.address, s.city].filter(Boolean).join(', '))}</div>
-          <div class="tag-row" style="margin-top:8px">
+          <div class="stop-top-row">
+            <div class="stop-name-block">
+              <div class="stop-name" style="${isExcluded ? 'text-decoration: line-through;' : ''}">${esc(s.name)}</div>
+              <div class="stop-address">${esc([s.address, s.city].filter(Boolean).join(', '))}</div>
+            </div>
+            <div style="display: flex; gap: 6px; align-items: center;">
+              ${hasLocation && !isExcluded ? `<a href="${mapsUrl(s)}" target="_blank" class="btn btn-ghost btn-sm maps-btn">📍 Maps</a>` : ''}
+              <button class="btn btn-ghost btn-sm" data-action="toggle-route-stop" data-id="${s.id}">
+                ${isExcluded ? 'Include' : 'Exclude'}
+              </button>
+            </div>
+          </div>
+          <div class="tag-row" style="margin-top:8px; align-items: center;">
             <span class="tag ${isConf?'tag-confirmed':'tag-potential'}">${isConf?'✓ Confirmed':'~ Potential'}</span>
             ${tb ? `<span class="tag tag-time">${formatTime(tb.early_bound)} – ${formatTime(tb.late_bound)}</span>` : ''}
-            ${hasLocation ? `<a href="${mapsUrl(s)}" target="_blank" class="tag tag-maps">📍 Maps</a>` : ''}
           </div>
         </div>
       </div>`;
@@ -719,7 +791,6 @@ function renderRouteResult() {
 // ─── EVENTS ───────────────────────────────────────────────────
 function attachEvents() {
   document.querySelectorAll('[data-action]').forEach(el => {
-    // Skip selects, search inputs, and plain anchor tags (Maps links)
     if (el.tagName === 'SELECT') return;
     if (el.tagName === 'INPUT' && el.dataset.action === 'search') return;
     if (el.tagName === 'A') return;
@@ -742,6 +813,14 @@ function attachEvents() {
 
   const cityFilter = document.querySelector('[data-action="filter-city"]');
   if (cityFilter) cityFilter.addEventListener('change', e => { state.filterCity = e.target.value; render(); });
+
+  // Passcode: submit on Enter key in the passcode input
+  const passcodeInput = document.getElementById('passcode-input');
+  if (passcodeInput) {
+    passcodeInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') handlePasscodeSubmit();
+    });
+  }
 }
 
 function handleToggleProduct(e) {
@@ -774,23 +853,101 @@ function openVisitModal(storeId, existingVisit = null) {
   state.modal = 'visit';
 }
 
+// ─── PASSCODE ─────────────────────────────────────────────────
+function handlePasscodeSubmit() {
+  const input = document.getElementById('passcode-input');
+  if (!input) return;
+  const val = input.value.trim();
+  if (val === ADMIN_PASSCODE) {
+    state.currentUser = state.pendingAdminUser;
+    state.pendingAdminUser = null;
+    state.passcodeError = false;
+    state.screen = 'main';
+    render();
+  } else {
+    state.passcodeError = true;
+    render();
+  }
+}
+
+async function handleDeleteStore(id) {
+  if (!isAdmin()) {
+    showToast('Only admins can delete stores', 'error');
+    return;
+  }
+  const store = state.stores.find(s => s.id === id);
+  const visitCount = state.visits.filter(v => v.store_id === id).length;
+  const warning = visitCount > 0
+    ? `Delete "${store?.name}"? This will also delete ${visitCount} visit log${visitCount !== 1 ? 's' : ''}. This cannot be undone.`
+    : `Delete "${store?.name}"? This cannot be undone.`;
+  if (!confirm(warning)) return;
+  if (await deleteStore(id)) {
+    state.modal = null;
+    state.editStore = null;
+    showToast('Store deleted');
+    render();
+  }
+}
+
 async function handleClick(e) {
   const action = e.currentTarget.dataset.action;
   if (e.currentTarget.tagName === 'SELECT') return;
   if (['toggle-day','set-stars'].includes(action)) captureModalState();
 
+  // ─── PASSCODE ACTIONS ─────────────────────────────────────
+  if (action === 'submit-passcode') {
+    handlePasscodeSubmit();
+    return;
+  }
+
+  if (action === 'cancel-passcode') {
+    state.pendingAdminUser = null;
+    state.passcodeError = false;
+    render();
+    return;
+  }
+
+  // ─── LOGIN ────────────────────────────────────────────────
   if (action === 'select-user') {
-    state.currentUser = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
-    state.screen = 'main';
-    render();
-  } else if (action === 'switch-user') {
-    // Prevent the row click from firing when the delete button inside it was clicked
+    const user = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
+    if (!user) return;
+    // Admin must pass the passcode gate
+    if (user.name.toLowerCase() === ADMIN_NAME) {
+      state.pendingAdminUser = user;
+      state.passcodeError = false;
+      render();
+      setTimeout(() => document.getElementById('passcode-input')?.focus(), 50);
+    } else {
+      state.currentUser = user;
+      state.screen = 'main';
+      render();
+    }
+    return;
+  }
+
+  if (action === 'switch-user') {
     if (e.target.closest('[data-action="delete-user"]')) return;
-    state.currentUser = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
-    state.modal = null;
-    showToast(`Switched to ${state.currentUser.name}`);
-    render();
-  } else if (action === 'delete-user') {
+    const user = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
+    if (!user) return;
+    // If switching to admin, require passcode
+    if (user.name.toLowerCase() === ADMIN_NAME && state.currentUser?.id !== user.id) {
+      state.modal = null;
+      state.pendingAdminUser = user;
+      state.passcodeError = false;
+      state.screen = 'login';
+      render();
+      setTimeout(() => document.getElementById('passcode-input')?.focus(), 50);
+    } else {
+      state.currentUser = user;
+      state.modal = null;
+      showToast(`Switched to ${user.name}`);
+      render();
+    }
+    return;
+  }
+
+  // ─── USER MANAGEMENT ──────────────────────────────────────
+  if (action === 'delete-user') {
     e.stopPropagation();
     if (!isAdmin()) return;
     const id = parseInt(e.currentTarget.dataset.id);
@@ -800,31 +957,41 @@ async function handleClick(e) {
       ? `Delete ${name}? They have ${logCount} visit log${logCount !== 1 ? 's' : ''} which will become unattributed. This cannot be undone.`
       : `Delete ${name}? This cannot be undone.`;
     if (!confirm(warning)) return;
-    if (await deleteUser(id)) {
-      showToast(`${name} deleted`);
-      render();
-    }
-  } else if (action === 'open-account-switcher') {
-    state.modal = 'accounts'; render();
-  } else if (action === 'show-add-user') {
-    state.addingUser = true; render();
-    setTimeout(() => document.getElementById('new-user-input')?.focus(), 50);
-  } else if (action === 'cancel-add-user') {
-    state.addingUser = false; render();
-  } else if (action === 'create-user') {
+    if (await deleteUser(id)) { showToast(`${name} deleted`); render(); }
+    return;
+  }
+
+  if (action === 'open-account-switcher') { state.modal = 'accounts'; render(); return; }
+  if (action === 'show-add-user') { state.addingUser = true; render(); setTimeout(() => document.getElementById('new-user-input')?.focus(), 50); return; }
+  if (action === 'cancel-add-user') { state.addingUser = false; render(); return; }
+
+  if (action === 'create-user') {
     const name = document.getElementById('new-user-input')?.value.trim();
     if (!name) return;
     if (await createUser(name)) { state.addingUser = false; showToast(`${name} added`); render(); }
-  } else if (action === 'logout') {
-    state.screen = 'login'; state.currentUser = null; state.tab = 'stores'; state.modal = null; render();
-  } else if (action === 'tab') {
-    state.tab = e.currentTarget.dataset.tab; state.routeResult = null; render();
-  } else if (action === 'open-add-store') {
+    return;
+  }
+
+  if (action === 'logout') {
+    state.screen = 'login'; state.currentUser = null; state.tab = 'stores';
+    state.modal = null; state.pendingAdminUser = null; state.passcodeError = false;
+    render();
+    return;
+  }
+
+  // ─── NAV ──────────────────────────────────────────────────
+  if (action === 'tab') { state.tab = e.currentTarget.dataset.tab; state.routeResult = null; render(); return; }
+
+  // ─── STORE CRUD ───────────────────────────────────────────
+  if (action === 'open-add-store') {
     state.editStore = { name:'', address:'', city:'' };
     state.editConfirmed = []; state.editPotential = [];
     state.editEarly = ''; state.editLate = '';
     state.modal = 'store'; render();
-  } else if (action === 'edit-store') {
+    return;
+  }
+
+  if (action === 'edit-store') {
     const id = parseInt(e.currentTarget.dataset.id);
     state.editStore = { ...state.stores.find(s => s.id === id) };
     state.editConfirmed = state.confirmedDays.filter(d => d.store_id === id).map(d => d.day);
@@ -833,16 +1000,51 @@ async function handleClick(e) {
     state.editEarly = tb.early_bound?.slice(0,5) || '';
     state.editLate = tb.late_bound?.slice(0,5) || '';
     state.modal = 'store'; render();
-  } else if (action === 'open-log-visit') {
+    return;
+  }
+
+  // Delete from store card (admin only)
+  if (action === 'delete-store-card') {
+    if (!isAdmin()) { showToast('Only admins can delete stores', 'error'); return; }
+    await handleDeleteStore(parseInt(e.currentTarget.dataset.id));
+    return;
+  }
+
+  // Delete from edit modal (admin only)
+  if (action === 'delete-store-modal') {
+    if (!isAdmin()) { showToast('Only admins can delete stores', 'error'); return; }
+    await handleDeleteStore(parseInt(e.currentTarget.dataset.id));
+    return;
+  }
+
+  if (action === 'save-store') {
+    captureModalState();
+    if (!state.editStore.name) { showToast('Store name is required', 'error'); return; }
+    const payload = { name: state.editStore.name, address: state.editStore.address || null, city: state.editStore.city || null };
+    const timeBound = { early: state.editEarly || null, late: state.editLate || null };
+    if (await saveStore(payload, state.editConfirmed, state.editPotential, timeBound)) {
+      state.modal = null; state.editStore = null; showToast('Store saved'); render();
+    }
+    return;
+  }
+
+  // ─── VISIT CRUD ───────────────────────────────────────────
+  if (action === 'open-log-visit') {
     const storeId = parseInt(e.currentTarget.dataset.id);
     const prevLogsStore = state.viewLogsStoreId;
     openVisitModal(storeId);
     if (prevLogsStore) state.viewLogsStoreId = prevLogsStore;
     render();
-  } else if (action === 'open-logs') {
+    return;
+  }
+
+  if (action === 'open-logs') {
     state.viewLogsStoreId = parseInt(e.currentTarget.dataset.id);
     state.modal = 'logs'; render();
-  } else if (action === 'edit-visit-log') {
+    return;
+  }
+
+  if (action === 'edit-visit-log') {
     const id = parseInt(e.currentTarget.dataset.id);
     const visit = state.visits.find(v => v.id === id);
     if (!visit || !canEditVisit(visit)) { showToast('You can only edit your own visits', 'error'); return; }
@@ -850,7 +1052,10 @@ async function handleClick(e) {
     openVisitModal(visit.store_id, visit);
     state.viewLogsStoreId = logsStoreId;
     render();
-  } else if (action === 'delete-visit-log') {
+    return;
+  }
+
+  if (action === 'delete-visit-log') {
     const id = parseInt(e.currentTarget.dataset.id);
     const visit = state.visits.find(v => v.id === id);
     if (!visit || !canEditVisit(visit)) { showToast('You can only delete your own visits', 'error'); return; }
@@ -861,13 +1066,16 @@ async function handleClick(e) {
       if (remaining.length === 0) state.modal = null;
       render();
     }
-  } else if (action === 'delete-store') {
-    if (!confirm('Delete this store and all its visit logs?')) return;
-    if (await deleteStore(parseInt(e.currentTarget.dataset.id))) { state.modal = null; showToast('Store deleted'); render(); }
-  } else if (action === 'set-stars') {
+    return;
+  }
+
+  if (action === 'set-stars') {
     state[e.currentTarget.dataset.field] = parseInt(e.currentTarget.dataset.val);
     render();
-  } else if (action === 'toggle-day') {
+    return;
+  }
+
+  if (action === 'toggle-day') {
     const group = e.currentTarget.dataset.group;
     const day = e.currentTarget.dataset.day;
     const arr = group === 'confirmed' ? state.editConfirmed : state.editPotential;
@@ -876,15 +1084,10 @@ async function handleClick(e) {
     if (idx === -1) { arr.push(day); const oi = other.indexOf(day); if (oi !== -1) other.splice(oi, 1); }
     else arr.splice(idx, 1);
     render();
-  } else if (action === 'save-store') {
-    captureModalState();
-    if (!state.editStore.name) { showToast('Store name is required', 'error'); return; }
-    const payload = { name: state.editStore.name, address: state.editStore.address || null, city: state.editStore.city || null };
-    const timeBound = { early: state.editEarly || null, late: state.editLate || null };
-    if (await saveStore(payload, state.editConfirmed, state.editPotential, timeBound)) {
-      state.modal = null; state.editStore = null; showToast('Store saved'); render();
-    }
-  } else if (action === 'save-visit') {
+    return;
+  }
+
+  if (action === 'save-visit') {
     captureModalState();
     const payload = {
       store_id: state.editVisitStoreId,
@@ -899,18 +1102,17 @@ async function handleClick(e) {
     };
     if (await saveVisit(payload)) {
       const logsStoreId = state.viewLogsStoreId;
+      const wasEdit = !!state.editVisitId;
       state.modal = logsStoreId ? 'logs' : null;
       state.editVisitId = null;
-      showToast(state.editVisitId ? 'Visit updated' : 'Visit logged');
+      showToast(wasEdit ? 'Visit updated' : 'Visit logged');
       render();
     }
-  } else if (action === 'close-modal' || action === 'close-modal-overlay') {
-    if (action === 'close-modal-overlay' && e.target !== e.currentTarget) return;
-    if (state.modal === 'visit' && state.viewLogsStoreId) {
-      state.modal = 'logs'; state.editVisitId = null; render(); return;
-    }
-    state.modal = null; state.editStore = null; state.editVisitId = null; state.viewLogsStoreId = null; render();
-  } else if (action === 'build-route') {
+    return;
+  }
+
+  // ─── ROUTE ────────────────────────────────────────────────
+  if (action === 'build-route') {
     const day = document.getElementById('route-day')?.value;
     const address = document.getElementById('route-start-address')?.value.trim();
     const city = document.getElementById('route-start-city')?.value.trim();
@@ -927,17 +1129,56 @@ async function handleClick(e) {
     const confirmed = eligible.filter(s => state.confirmedDays.some(d => d.store_id === s.id && d.day === day));
     const potential = eligible.filter(s => !state.confirmedDays.some(d => d.store_id === s.id && d.day === day));
     state.routeResult = { stops: [...confirmed, ...potential], day };
+    state.routeExcludedIds = [];
     render();
+    return;
+  }
+
+  if (action === 'toggle-route-stop') {
+    const id = parseInt(e.currentTarget.dataset.id);
+    if (state.routeExcludedIds.includes(id)) {
+      state.routeExcludedIds = state.routeExcludedIds.filter(x => x !== id);
+    } else {
+      state.routeExcludedIds.push(id);
+    }
+    render();
+    return;
+  }
+
+  // ─── MODAL CLOSE ──────────────────────────────────────────
+  if (action === 'close-modal' || action === 'close-modal-overlay') {
+    if (action === 'close-modal-overlay' && e.target !== e.currentTarget) return;
+    if (state.modal === 'visit' && state.viewLogsStoreId) {
+      state.modal = 'logs'; state.editVisitId = null; render(); return;
+    }
+    state.modal = null; state.editStore = null; state.editVisitId = null; state.viewLogsStoreId = null; render();
+    return;
   }
 }
 
+// ─── KEYBOARD ─────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && document.getElementById('new-user-input') === document.activeElement) document.querySelector('[data-action="create-user"]')?.click();
-  if (e.key === 'Escape' && state.modal) {
-    if (state.modal === 'visit' && state.viewLogsStoreId) { state.modal = 'logs'; state.editVisitId = null; render(); return; }
-    state.modal = null; state.editStore = null; state.editVisitId = null; state.viewLogsStoreId = null; render();
+  if (e.key === 'Enter') {
+    if (document.getElementById('new-user-input') === document.activeElement) {
+      document.querySelector('[data-action="create-user"]')?.click();
+    }
+    if (document.getElementById('passcode-input') === document.activeElement) {
+      handlePasscodeSubmit();
+    }
+  }
+  if (e.key === 'Escape') {
+    if (state.pendingAdminUser) {
+      state.pendingAdminUser = null; state.passcodeError = false; render(); return;
+    }
+    if (state.modal) {
+      if (state.modal === 'visit' && state.viewLogsStoreId) {
+        state.modal = 'logs'; state.editVisitId = null; render(); return;
+      }
+      state.modal = null; state.editStore = null; state.editVisitId = null; state.viewLogsStoreId = null; render();
+    }
   }
 });
 
+// ─── BOOT ─────────────────────────────────────────────────────
 async function boot() { db = initDB(); await loadAll(); render(); setupRealtime(); }
 boot();

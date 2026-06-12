@@ -10,7 +10,7 @@
   --border-2:    #3f3f46;
 
   --text:        #fafafa;
-  --text-2:      #a1a1aa;
+  --text-2:      #ffffff;
   --text-3:      #71717a;
 
   --jade:        #00c9a7;
@@ -71,9 +71,7 @@ html, body {
   padding: 0 24px;
 }
 
-.topbar-brand {
-  color: var(--text);
-}
+.topbar-brand { color: var(--text); }
 
 .brand-sep {
   color: var(--jade);
@@ -103,12 +101,7 @@ html, body {
 }
 
 .nav-btn:hover { color: var(--text-2); }
-
-.nav-btn.active {
-  background: var(--surface-3);
-  color: var(--text);
-  font-weight: 600;
-}
+.nav-btn.active { background: var(--surface-3); color: var(--text); font-weight: 600; }
 
 .user-chip {
   display: flex;
@@ -135,11 +128,7 @@ html, body {
   white-space: nowrap;
 }
 
-.chip-caret {
-  color: var(--text-3);
-  font-size: 12px;
-  line-height: 1;
-}
+.chip-caret { color: var(--text-3); font-size: 12px; line-height: 1; }
 
 .admin-badge {
   font-family: 'DM Mono', monospace;
@@ -215,6 +204,51 @@ html, body {
   margin-bottom: 14px;
 }
 
+/* ── Passcode gate ───────────────────────────────────────────── */
+.passcode-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.passcode-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.passcode-error-msg {
+  font-size: 12px;
+  color: var(--red);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.passcode-error-msg::before {
+  content: '✕';
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.input-error {
+  border-color: var(--red) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12) !important;
+}
+
+.passcode-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── Page header ─────────────────────────────────────────────── */
 .page-header {
   display: flex;
@@ -243,13 +277,8 @@ html, body {
   flex-wrap: wrap;
 }
 
-.filter-input {
-  width: 240px;
-}
-
-.filter-select {
-  width: 160px;
-}
+.filter-input { width: 240px; }
+.filter-select { width: 160px; }
 
 /* ── Store grid ──────────────────────────────────────────────── */
 .stores-grid {
@@ -303,6 +332,7 @@ html, body {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
+  align-items: center;
 }
 
 /* ── Restock section ─────────────────────────────────────────── */
@@ -333,11 +363,7 @@ html, body {
   align-items: center;
 }
 
-.visit-by {
-  font-size: 12px;
-  color: var(--text-2);
-  font-weight: 500;
-}
+.visit-by { font-size: 12px; color: var(--text-2); font-weight: 500; }
 
 .visit-date {
   font-size: 11px;
@@ -345,17 +371,9 @@ html, body {
   color: var(--text-3);
 }
 
-.ratings-row {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-}
+.ratings-row { display: flex; gap: 20px; flex-wrap: wrap; }
 
-.rating-col {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
+.rating-col { display: flex; flex-direction: column; gap: 4px; }
 
 .rating-label {
   font-size: 10px;
@@ -531,9 +549,7 @@ html, body {
   color: var(--red);
 }
 
-.btn-danger:hover {
-  background: rgba(239,68,68,0.18);
-}
+.btn-danger:hover { background: rgba(239,68,68,0.18); }
 
 .btn-sm { padding: 5px 12px; font-size: 12px; }
 .btn-xs { padding: 3px 9px; font-size: 11px; }
@@ -541,10 +557,7 @@ html, body {
 /* ── Forms ───────────────────────────────────────────────────── */
 .form-group { margin-bottom: 18px; }
 
-.form-row {
-  display: flex;
-  gap: 12px;
-}
+.form-row { display: flex; gap: 12px; }
 
 .form-label {
   display: block;
@@ -554,10 +567,7 @@ html, body {
   color: var(--text-2);
 }
 
-.form-label-sub {
-  font-size: 11px;
-  color: var(--text-3);
-}
+.form-label-sub { font-size: 11px; color: var(--text-3); }
 
 .required { color: var(--red); }
 
@@ -595,11 +605,7 @@ textarea { resize: vertical; min-height: 80px; }
 }
 
 /* ── Day grid ────────────────────────────────────────────────── */
-.day-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
+.day-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .day-toggle {
   padding: 6px 13px;
@@ -613,10 +619,7 @@ textarea { resize: vertical; min-height: 80px; }
   transition: all 0.1s;
 }
 
-.day-toggle:hover {
-  border-color: var(--border-2);
-  color: var(--text-2);
-}
+.day-toggle:hover { border-color: var(--border-2); color: var(--text-2); }
 
 .day-confirmed {
   background: var(--jade-dim);
@@ -631,11 +634,7 @@ textarea { resize: vertical; min-height: 80px; }
 }
 
 /* ── Product chips ───────────────────────────────────────────── */
-.chip-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
+.chip-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .chip {
   padding: 5px 12px;
@@ -649,10 +648,7 @@ textarea { resize: vertical; min-height: 80px; }
   transition: all 0.1s;
 }
 
-.chip:hover {
-  border-color: var(--border-2);
-  color: var(--text-2);
-}
+.chip:hover { border-color: var(--border-2); color: var(--text-2); }
 
 .chip-on {
   background: var(--jade-dim);
@@ -661,11 +657,7 @@ textarea { resize: vertical; min-height: 80px; }
 }
 
 /* ── Users ───────────────────────────────────────────────────── */
-.user-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+.user-list { display: flex; flex-direction: column; gap: 6px; }
 
 .user-row {
   display: flex;
@@ -679,26 +671,15 @@ textarea { resize: vertical; min-height: 80px; }
   transition: background 0.1s, border-color 0.1s;
 }
 
-.user-row:hover {
-  background: var(--surface-3);
-  border-color: var(--border-2);
-}
+.user-row:hover { background: var(--surface-3); border-color: var(--border-2); }
 
 .user-row--active {
   border-color: var(--jade-border) !important;
   background: var(--jade-dim) !important;
 }
 
-.user-row-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.user-row-sub {
-  font-size: 11px;
-  color: var(--text-3);
-  margin-top: 1px;
-}
+.user-row-name { font-size: 14px; font-weight: 600; }
+.user-row-sub { font-size: 11px; color: var(--text-3); margin-top: 1px; }
 
 .active-tag {
   font-family: 'DM Mono', monospace;
@@ -724,15 +705,9 @@ textarea { resize: vertical; min-height: 80px; }
   transition: border-color 0.1s, color 0.1s;
 }
 
-.add-user-row:hover {
-  border-color: var(--jade-border);
-  color: var(--jade);
-}
+.add-user-row:hover { border-color: var(--jade-border); color: var(--jade); }
 
-.add-user-form {
-  display: flex;
-  gap: 6px;
-}
+.add-user-form { display: flex; gap: 6px; }
 
 /* ── Avatar ──────────────────────────────────────────────────── */
 .avatar {
@@ -782,17 +757,8 @@ textarea { resize: vertical; min-height: 80px; }
   margin-bottom: 22px;
 }
 
-.modal-title {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-}
-
-.modal-sub {
-  font-size: 12px;
-  color: var(--text-3);
-  margin-top: 2px;
-}
+.modal-title { font-size: 16px; font-weight: 700; letter-spacing: -0.01em; }
+.modal-sub { font-size: 12px; color: var(--text-3); margin-top: 2px; }
 
 .modal-close {
   background: none;
@@ -806,10 +772,7 @@ textarea { resize: vertical; min-height: 80px; }
   font-family: inherit;
 }
 
-.modal-close:hover {
-  color: var(--text);
-  background: var(--surface-3);
-}
+.modal-close:hover { color: var(--text); background: var(--surface-3); }
 
 .modal-footer {
   display: flex;
@@ -861,28 +824,10 @@ textarea { resize: vertical; min-height: 80px; }
   color: var(--text);
 }
 
-.log-by {
-  font-size: 12px;
-  color: var(--text-3);
-}
-
-.log-row-actions {
-  display: flex;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.log-ratings {
-  display: flex;
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.log-products {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
+.log-by { font-size: 12px; color: var(--text-3); }
+.log-row-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.log-ratings { display: flex; gap: 20px; flex-wrap: wrap; }
+.log-products { display: flex; flex-wrap: wrap; gap: 4px; }
 
 .log-notes {
   font-size: 12px;
@@ -900,6 +845,13 @@ textarea { resize: vertical; min-height: 80px; }
   margin-bottom: 20px;
 }
 
+.route-form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .route-result-header {
   display: flex;
   justify-content: space-between;
@@ -909,32 +861,27 @@ textarea { resize: vertical; min-height: 80px; }
   gap: 10px;
 }
 
-.route-summary {
-  font-size: 14px;
-  color: var(--text-2);
-}
+.route-summary { font-size: 14px; color: var(--text-2); }
 
-.route-stops {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.route-stops { display: flex; flex-direction: column; gap: 8px; }
 
+/* Tightened route stop card */
 .route-stop {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 16px 20px;
+  padding: 10px 14px;
   display: flex;
-  gap: 14px;
+  gap: 12px;
+  align-items: flex-start;
   transition: border-color 0.15s;
 }
 
 .route-stop:hover { border-color: var(--border-2); }
 
 .stop-index {
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--surface-3);
   border: 1px solid var(--border);
@@ -942,11 +889,11 @@ textarea { resize: vertical; min-height: 80px; }
   align-items: center;
   justify-content: center;
   font-family: 'DM Mono', monospace;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-3);
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .stop-index-first {
@@ -957,15 +904,34 @@ textarea { resize: vertical; min-height: 80px; }
 
 .stop-body { flex: 1; min-width: 0; }
 
+/* Top row inside stop: name+address on the left, Maps btn on the right */
+.stop-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.stop-name-block { flex: 1; min-width: 0; }
+
 .stop-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+  line-height: 1.3;
 }
 
 .stop-address {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--text-3);
-  margin-top: 2px;
+  margin-top: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Maps button inside route stop -- same ghost style as store card */
+.maps-btn {
+  flex-shrink: 0;
 }
 
 /* ── Empty state ─────────────────────────────────────────────── */
@@ -984,10 +950,7 @@ textarea { resize: vertical; min-height: 80px; }
   margin-bottom: 6px;
 }
 
-.empty-sub {
-  font-size: 13px;
-  color: var(--text-3);
-}
+.empty-sub { font-size: 13px; color: var(--text-3); }
 
 /* ── Toast ───────────────────────────────────────────────────── */
 .toast {
@@ -1016,15 +979,15 @@ textarea { resize: vertical; min-height: 80px; }
 /* ── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 860px) {
   .topbar { padding: 0 16px; }
-
   .content { padding: 24px 16px; }
-
   .stores-grid { grid-template-columns: 1fr; }
-
   .store-card-top { flex-direction: column; gap: 12px; }
   .store-card-actions { width: 100%; justify-content: flex-end; }
-
   .form-row { flex-direction: column; }
-
   .topbar-brand { display: none; }
+  .stop-top-row { flex-wrap: wrap; }
+  
+  /* Forces the route form to stack fully on mobile to prevent textbox squishing */
+  .route-form-row { flex-direction: column; align-items: stretch; }
+  .route-form-row > * { width: 100% !important; flex: none !important; }
 }
