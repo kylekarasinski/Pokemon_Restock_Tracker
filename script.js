@@ -11,20 +11,8 @@ const PRODUCT_TYPES = ['Sleeved Boosters','Blisters (1-3 Pack)','Booster Bundles
 
 const ADMIN_NAME = 'kyle';
 
-let db = null;
-
 function isAdmin() {
   return (state.currentUser?.name || '').toLowerCase() === ADMIN_NAME;
-}
-
-function setupRealtime() {
-  if (!db) return;
-  db.channel('public-table-changes')
-    .on('postgres_changes', { event: '*', schema: 'public' }, async () => {
-      await loadAll();
-      render();
-    })
-    .subscribe();
 }
 
 function canEditVisit(visit) {
@@ -40,6 +28,8 @@ let state = {
   screen: 'login',
   tab: 'stores',
   currentUser: null,
+  loginName: '',
+  loginPasscode: '',
   users: [],
   stores: [],
   visits: [],
@@ -51,7 +41,6 @@ let state = {
   filterSearch: '',
   modal: null,
 
-  // passcode gate
   pendingAdminUser: null,
   passcodeError: false,
 
@@ -83,20 +72,12 @@ let state = {
   addingUser: false,
 };
 
-// ─── DB ───────────────────────────────────────────────────────
-function initDB() {
-  try { return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
-  catch(e) { return null; }
-}
-
+// ─── API CALLS ────────────────────────────────────────────────
 async function loadAll() {
   try {
     const response = await fetch('/api/stores', {
       method: 'GET',
-      headers: {
-        'username': state.loginName,
-        'passcode': state.loginPasscode
-      }
+      headers: { 'username': state.loginName, 'passcode': state.loginPasscode }
     });
 
     if (!response.ok) {
@@ -107,7 +88,6 @@ async function loadAll() {
 
     const data = await response.json();
     
-    // Unpack the new bundled response into your state
     state.stores = data.stores || [];
     state.visits = data.visits || [];
     state.confirmedDays = data.confirmedDays || [];
@@ -121,83 +101,78 @@ async function loadAll() {
 }
 
 async function createUser(name) {
-  const { error } = await db.from('Users').insert([{ name }]);
-  if (error) { showToast(error.message, 'error'); return false; }
-  const { data } = await db.from('Users').select('*').order('name');
-  state.users = data || [];
-  return true;
+  try {
+    const response = await fetch('/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    if (!response.ok) throw new Error('Failed to create user');
+    
+    const getRes = await fetch('/api/users');
+    state.users = await getRes.json() || [];
+    return true;
+  } catch (err) {
+    showToast('Failed to create user', 'error');
+    return false;
+  }
 }
 
 async function deleteUser(id) {
-  const { error } = await db.from('Users').delete().eq('id', id);
-  if (error) { showToast(error.message, 'error'); return false; }
-  const { data } = await db.from('Users').select('*').order('name');
-  state.users = data || [];
-  return true;
-}
-
-async function saveStore(payload, confirmedDays, potentialDays, timeBound) {
   try {
-    let storeId;
-    if (state.editStore?.id) {
-      const { error: e0 } = await db.from('Location').update(payload).eq('id', state.editStore.id);
-      if (e0) throw e0;
-      storeId = state.editStore.id;
-      const { error: d1 } = await db.from('Confirmed_Restock_Day').delete().eq('store_id', storeId);
-      if (d1) throw d1;
-      const { error: d2 } = await db.from('Unconfirmed_Restock_Day').delete().eq('store_id', storeId);
-      if (d2) throw d2;
-      const { error: d3 } = await db.from('Restock_Time_Bound').delete().eq('store_id', storeId);
-      if (d3) throw d3;
-    } else {
-      const { data, error: e0 } = await db.from('Location').insert([{ ...payload, created_by: state.currentUser.id }]).select().single();
-      if (e0) throw e0;
-      storeId = data.id;
-    }
-    if (confirmedDays.length) {
-      const { error: e1 } = await db.from('Confirmed_Restock_Day').insert(confirmedDays.map(day => ({ store_id: storeId, day })));
-      if (e1) throw e1;
-    }
-    if (potentialDays.length) {
-      const { error: e2 } = await db.from('Unconfirmed_Restock_Day').insert(potentialDays.map(day => ({ store_id: storeId, day })));
-      if (e2) throw e2;
-    }
-    if (timeBound.early || timeBound.late) {
-      const { error: e3 } = await db.from('Restock_Time_Bound').insert([{ store_id: storeId, early_bound: timeBound.early || null, late_bound: timeBound.late || null }]);
-      if (e3) throw e3;
-    }
-    await loadAll();
+    const response = await fetch(`/api/users?id=${id}`, {
+      method: 'DELETE',
+      headers: { 'username': state.loginName, 'passcode': state.loginPasscode }
+    });
+    if (!response.ok) throw new Error('Failed to delete user');
+
+    const getRes = await fetch('/api/users');
+    state.users = await getRes.json() || [];
     return true;
-  } catch(e) {
-    console.error(e);
-    showToast(e.message || 'Database error while saving store', 'error');
+  } catch (err) {
+    showToast('Failed to delete user', 'error');
     return false;
   }
 }
 
 async function saveVisit(payload) {
   try {
-    if (state.editVisitId) {
-      const { error } = await db.from('Visit_Log').update(payload).eq('id', state.editVisitId);
-      if (error) throw error;
-    } else {
-      const { error } = await db.from('Visit_Log').insert([payload]);
-      if (error) throw error;
-    }
+    const method = state.editVisitId ? 'PATCH' : 'POST';
+    const url = state.editVisitId ? `/api/visits?id=${state.editVisitId}` : `/api/visits`;
+    
+    const response = await fetch(url, {
+      method: method,
+      headers: {
+        'username': state.loginName,
+        'passcode': state.loginPasscode,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) throw new Error('Database rejected visit');
     await loadAll();
     return true;
   } catch(e) {
-    console.error(e);
-    showToast(e.message || 'Database error while saving visit', 'error');
+    showToast('Error saving visit', 'error');
     return false;
   }
 }
 
 async function deleteVisit(id) {
-  const { error } = await db.from('Visit_Log').delete().eq('id', id);
-  if (error) { showToast(error.message, 'error'); return false; }
-  await loadAll();
-  return true;
+  try {
+    const response = await fetch(`/api/visits?id=${id}`, {
+      method: 'DELETE',
+      headers: { 'username': state.loginName, 'passcode': state.loginPasscode }
+    });
+    if (!response.ok) throw new Error('Failed to delete visit');
+    
+    await loadAll();
+    return true;
+  } catch(e) {
+    showToast('Error deleting visit', 'error');
+    return false;
+  }
 }
 
 async function deleteStore(id) {
@@ -227,7 +202,7 @@ function initials(name) { return (name || '?').split(' ').map(w => w[0]).join(''
 function avatarColor(name) { let h = 0; for (let c of (name||'')) h = (h << 5) - h + c.charCodeAt(0); return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]; }
 function stars(n) { return Array.from({length:5}, (_,i) => `<span class="star ${i < n ? 'star-on' : 'star-off'}">★</span>`).join(''); }
 function formatTime(t) { if (!t) return null; const [h, m] = t.split(':'); const hr = parseInt(h); return `${hr > 12 ? hr-12 : hr || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`; }
-function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+function esc(s) { return String(s || '').replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"').replace(/'/g,''); }
 function getTodayString() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function formatDate(iso) {
   if (!iso) return '';
@@ -286,7 +261,6 @@ function render() {
 
 // ─── LOGIN ────────────────────────────────────────────────────
 function renderLogin() {
-  // Admin passcode gate -- shown after Kyle is selected
   if (state.pendingAdminUser) {
     return `
     <div class="login-wrap">
@@ -472,12 +446,10 @@ function renderStoreCard(s) {
   const pot = state.potentialDays.filter(d => d.store_id === s.id);
   const tb = state.timeBounds.find(t => t.store_id === s.id);
   const location = [s.address, s.city].filter(Boolean).join(', ');
-const storeVisits = state.visits.filter(v => v.store_id === s.id).sort((a, b) => {
+  const storeVisits = state.visits.filter(v => v.store_id === s.id).sort((a, b) => {
     const dateA = a.visit_date || '';
     const dateB = b.visit_date || '';
-    // Use localeCompare for safe string sorting (YYYY-MM-DD string alphabetical order = chronological order)
     if (dateA !== dateB) return dateB.localeCompare(dateA);
-    // If the dates are perfectly tied, fallback to highest ID
     return (b.id || 0) - (a.id || 0); 
   });
   const latest = storeVisits[0];
@@ -763,7 +735,6 @@ function renderRouteResult() {
   const { stops, day } = state.routeResult;
   if (!stops.length) return `<div class="empty-state"><p class="empty-title">No stores on ${esc(day)}</p><p class="empty-sub">Add restock days to your stores to see them here.</p></div>`;
 
-  // Filter down to only active stops for the Maps link and count
   const activeStops = stops.filter(s => !state.routeExcludedIds.includes(s.id));
   const startLocation = [state.routeStartAddress, state.routeStartCity, state.routeStartState].filter(Boolean).join(', ');
   const googleMapsUrl = 'https://www.google.com/maps/dir/' + [startLocation, ...activeStops.map(s => [s.address, s.city].filter(Boolean).join(', '))].filter(Boolean).map(encodeURIComponent).join('/');
@@ -780,7 +751,6 @@ function renderRouteResult() {
       const tb = state.timeBounds.find(t => t.store_id === s.id);
       const hasLocation = !!(s.address || s.city);
       
-      // Calculate the dynamic number only for active stops
       const activeIndex = isExcluded ? null : activeStops.findIndex(x => x.id === s.id) + 1;
 
       return `
@@ -837,7 +807,6 @@ function attachEvents() {
   const cityFilter = document.querySelector('[data-action="filter-city"]');
   if (cityFilter) cityFilter.addEventListener('change', e => { state.filterCity = e.target.value; render(); });
 
-  // Passcode: submit on Enter key in the passcode input
   const passcodeInput = document.getElementById('passcode-input');
   if (passcodeInput) {
     passcodeInput.addEventListener('keydown', e => {
@@ -880,44 +849,40 @@ function openVisitModal(storeId, existingVisit = null) {
 async function handlePasscodeSubmit() {
   const input = document.getElementById('passcode-input');
   
-  // FIX 1: Prevent crash if the user hit 'Back' but somehow triggered a submit
   if (!input || !state.pendingAdminUser) return; 
   
+  const userToLogin = state.pendingAdminUser;
   const enteredPasscode = input.value.trim();
-  const attemptName = state.pendingAdminUser.name;
+
+  state.pendingAdminUser = null; 
 
   try {
-    // Ping Vercel to verify the passcode
     const response = await fetch('/api/stores', {
       method: 'GET',
-      headers: { 'username': attemptName, 'passcode': enteredPasscode }
+      headers: { 'username': userToLogin.name, 'passcode': enteredPasscode }
     });
 
     if (!response.ok) {
       state.passcodeError = true;
+      state.pendingAdminUser = userToLogin; 
       render();
       return;
     }
 
     const data = await response.json();
-    
-    // FIX 2: Correctly unpack the bundle so the UI doesn't crash
     state.stores = data.stores || [];
     state.visits = data.visits || [];
     state.confirmedDays = data.confirmedDays || [];
     state.potentialDays = data.potentialDays || [];
     state.timeBounds = data.timeBounds || [];
     
-    // Success: Finalize the login variables and move to the main screen
-    state.loginName = attemptName;
+    state.loginName = userToLogin.name;
     state.loginPasscode = enteredPasscode;
-    state.currentUser = state.pendingAdminUser;
-    state.pendingAdminUser = null;
+    state.currentUser = userToLogin;
     state.passcodeError = false;
     state.screen = 'main';
     
     render();
-    
   } catch (err) {
     showToast('Network error verifying passcode', 'error');
   }
@@ -961,18 +926,16 @@ async function handleClick(e) {
   }
 
   // ─── LOGIN ────────────────────────────────────────────────
- if (action === 'select-user') {
+  if (action === 'select-user') {
     const user = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
     if (!user) return;
 
     if (user.name.toLowerCase() === ADMIN_NAME) {
-      // Admin hit: Show passcode screen
       state.pendingAdminUser = user;
       state.passcodeError = false;
       render();
       setTimeout(() => document.getElementById('passcode-input')?.focus(), 50);
     } else {
-      // Friend hit: Bypass passcode entirely and load the map
       state.currentUser = user;
       state.loginName = user.name;
       state.loginPasscode = ''; 
@@ -987,7 +950,7 @@ async function handleClick(e) {
     if (e.target.closest('[data-action="delete-user"]')) return;
     const user = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
     if (!user) return;
-    // If switching to admin, require passcode
+    
     if (user.name.toLowerCase() === ADMIN_NAME && state.currentUser?.id !== user.id) {
       state.modal = null;
       state.pendingAdminUser = user;
@@ -1061,21 +1024,19 @@ async function handleClick(e) {
     return;
   }
 
-  // Delete from store card (admin only)
   if (action === 'delete-store-card') {
     if (!isAdmin()) { showToast('Only admins can delete stores', 'error'); return; }
     await handleDeleteStore(parseInt(e.currentTarget.dataset.id));
     return;
   }
 
-  // Delete from edit modal (admin only)
   if (action === 'delete-store-modal') {
     if (!isAdmin()) { showToast('Only admins can delete stores', 'error'); return; }
     await handleDeleteStore(parseInt(e.currentTarget.dataset.id));
     return;
   }
 
-if (action === 'save-store') {
+  if (action === 'save-store') {
     captureModalState();
     
     if (!state.editStore.name) { 
@@ -1087,7 +1048,6 @@ if (action === 'save-store') {
     const rawAddress = (state.editStore.address || '').trim().toLowerCase();
     const rawCity = (state.editStore.city || '').trim().toLowerCase();
 
-    // Frontend duplicate check against local state to prevent unnecessary API traffic
     const isDuplicate = state.stores.some(s => {
       if (state.editStore.id && s.id === state.editStore.id) return false;
       return s.name.trim().toLowerCase() === rawName && 
@@ -1107,7 +1067,6 @@ if (action === 'save-store') {
     };
 
     try {
-      // Send the save payload along with credentials to the backend
       const response = await fetch('/api/stores', {
         method: 'POST',
         headers: {
@@ -1124,12 +1083,10 @@ if (action === 'save-store') {
         return;
       }
 
-      // Success: Clear editing state, close modal, and refresh data
       state.modal = null; 
       state.editStore = null; 
       showToast('Store saved'); 
       
-      // Reload the data from the server to guarantee consistency
       await loadAll(); 
     } catch (err) {
       showToast('Network error while saving', 'error');
