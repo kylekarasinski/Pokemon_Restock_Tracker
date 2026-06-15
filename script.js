@@ -135,6 +135,33 @@ async function deleteUser(id) {
   }
 }
 
+async function updateUserAvatar(id, base64String) {
+  try {
+    const response = await fetch(`/api/users?id=${id}`, {
+      method: 'PATCH',
+      headers: { 
+        'username': state.loginName, 
+        'passcode': state.loginPasscode,
+        'Content-Type': 'application/json' 
+      },
+      body: JSON.stringify({ avatar_url: base64String })
+    });
+    
+    if (!response.ok) throw new Error('Failed to save avatar');
+    
+    // Refresh the users list and update state
+    const getRes = await fetch('/api/users');
+    state.users = await getRes.json() || [];
+    if (state.currentUser?.id === id) {
+      state.currentUser = state.users.find(u => u.id === id);
+    }
+    render();
+    showToast('Profile picture updated!');
+  } catch (err) {
+    showToast('Failed to save avatar', 'error');
+  }
+}
+
 async function saveVisit(payload) {
   try {
     const method = state.editVisitId ? 'PATCH' : 'POST';
@@ -200,6 +227,39 @@ async function deleteStore(id) {
 // ─── HELPERS ──────────────────────────────────────────────────
 function initials(name) { return (name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2); }
 function avatarColor(name) { let h = 0; for (let c of (name||'')) h = (h << 5) - h + c.charCodeAt(0); return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length]; }
+
+// Draws the image if they have one, otherwise falls back to their colored initials
+function renderAvatarHtml(user, sizeClass = 'avatar') {
+  if (!user) return `<div class="${sizeClass}" style="background:#ccc">?</div>`;
+  if (user.avatar_url) {
+    return `<img src="${user.avatar_url}" class="${sizeClass}" style="object-fit: cover; border-radius: 50%;" />`;
+  }
+  return `<div class="${sizeClass}" style="background:${avatarColor(user.name)}">${initials(user.name)}</div>`;
+}
+
+// Shrinks the image so it doesn't blow up your database
+function processImage(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 150; // Keeps the string small
+        let width = img.width; let height = img.height;
+        if (width > height) { if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; } }
+        else { if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; } }
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.8)); // 80% quality JPEG
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 function stars(n) { return Array.from({length:5}, (_,i) => `<span class="star ${i < n ? 'star-on' : 'star-off'}">★</span>`).join(''); }
 function formatTime(t) { if (!t) return null; const [h, m] = t.split(':'); const hr = parseInt(h); return `${hr > 12 ? hr-12 : hr || 12}:${m} ${hr >= 12 ? 'PM' : 'AM'}`; }
 function esc(s) { return String(s || '').replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>').replace(/"/g,'"').replace(/'/g,''); }
@@ -377,11 +437,21 @@ function renderAccountsModal() {
           const logCount = state.visits.filter(v => v.user_id === u.id).length;
           return `
           <div class="user-row ${isActive ? 'user-row--active' : ''}" data-action="switch-user" data-id="${u.id}">
-            <div class="avatar" style="background:${avatarColor(u.name)}">${initials(u.name)}</div>
-            <div style="flex:1;min-width:0">
+            
+            ${renderAvatarHtml(u, 'avatar')}
+            
+            <div style="flex:1;min-width:0; margin-left: 12px;">
               <div class="user-row-name">${esc(u.name)}${isActive ? ' <span class="active-tag">active</span>' : ''}</div>
               <div class="user-row-sub">${isActive ? 'Currently signed in' : 'Switch to this profile'}</div>
             </div>
+            
+            ${isSelf ? `
+              <label class="btn btn-ghost btn-xs" style="cursor: pointer;" onclick="event.stopPropagation()">
+                Edit PFP
+                <input type="file" accept="image/*" style="display: none;" onchange="handleAvatarUpload(event, ${u.id})">
+              </label>
+            ` : ''}
+
             ${isAdmin() && !isSelf ? `
             <button class="btn btn-danger btn-xs delete-user-btn" data-action="delete-user" data-id="${u.id}" data-name="${esc(u.name)}" data-logs="${logCount}">Delete</button>
             ` : ''}
@@ -844,6 +914,20 @@ function openVisitModal(storeId, existingVisit = null) {
   state.editNotes = existingVisit?.notes || '';
   state.modal = 'visit';
 }
+
+// Placed in the global scope so the inline onchange can see it
+window.handleAvatarUpload = async function(e, userId) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('Must be an image file', 'error');
+    return;
+  }
+  
+  showToast('Compressing image...');
+  const base64String = await processImage(file);
+  await updateUserAvatar(userId, base64String);
+};
 
 // ─── PASSCODE ─────────────────────────────────────────────────
 async function handlePasscodeSubmit() {
