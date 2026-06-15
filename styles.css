@@ -1045,16 +1045,13 @@ textarea { resize: vertical; min-height: 96px; }
   background: var(--surface-3);
   cursor: grab;
   user-select: none;
-}
-
-.crop-area:active {
-  cursor: grabbing;
+  position: relative;
 }
 
 .crop-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  left: 50%;
   transform-origin: center center;
+  pointer-events: none;
 }

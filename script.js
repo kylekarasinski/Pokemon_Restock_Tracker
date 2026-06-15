@@ -937,10 +937,12 @@ function attachEvents() {
         // Pre-measure the image to find the perfect fit scale
         const tempImg = new Image();
         tempImg.onload = () => {
-          state.baseScale = 150 / Math.min(tempImg.width, tempImg.height);
+          const shorter = Math.min(tempImg.width, tempImg.height);
+          state.baseScale = 150 / shorter;
           state.cropImageSrc = event.target.result;
-          state.cropZoom = 1; // 1x now means "perfectly fitted to the circle"
-          state.cropPanX = 0; state.cropPanY = 0;
+          state.cropZoom = 1;
+          state.cropPanX = 0;
+          state.cropPanY = 0;
           state.dropdownOpen = false;
           state.modal = 'crop';
           render();
@@ -1404,21 +1406,15 @@ async function handleClick(e) {
 
 if (action === 'save-crop') {
   const img = document.getElementById('crop-img');
-  const cropArea = document.getElementById('crop-area');
   const canvas = document.createElement('canvas');
   canvas.width = 150;
   canvas.height = 150;
   const ctx = canvas.getContext('2d');
 
   const finalScale = state.baseScale * state.cropZoom;
-
-  // The crop area is 150x150, so center is always 75,75
-  // The image is transformed via translate+scale around its own center
-  // We need to find where the top-left of the image lands in canvas space
   const scaledW = img.naturalWidth * finalScale;
   const scaledH = img.naturalHeight * finalScale;
 
-  // Image center sits at crop center (75,75) plus user pan
   const imgCenterX = 75 + state.cropPanX;
   const imgCenterY = 75 + state.cropPanY;
 
@@ -1426,7 +1422,6 @@ if (action === 'save-crop') {
   const drawY = imgCenterY - scaledH / 2;
 
   ctx.drawImage(img, drawX, drawY, scaledW, scaledH);
-
   const base64 = canvas.toDataURL('image/jpeg', 0.8);
   state.modal = null;
   await updateUserAvatar(state.currentUser.id, base64);
