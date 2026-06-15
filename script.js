@@ -1,10 +1,3 @@
-// ─── CONFIG ───────────────────────────────────────────────────
-const SUPABASE_URL = 'https://yhdjasgtuifpywxaxwab.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InloZGphc2d0dWlmcHl3eGF4d2FiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMzU1MzQsImV4cCI6MjA5NjcxMTUzNH0.z3YygKIRZIwZ5y3bLnwLsVVRIW8uJ1UX9-0aM2fCyuA';
-const ADMIN_NAME = 'kyle'; // case-insensitive match
-const ADMIN_PASSCODE = 'flygonisthebestpokemon';
-// ──────────────────────────────────────────────────────────────
-
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
 const PRICE_LABELS = {
   low_msrp: 'Low MSRP',
@@ -97,23 +90,27 @@ function initDB() {
 }
 
 async function loadAll() {
-  if (IS_DEMO) return;
   try {
-    const [u, s, v, cd, pd, tb] = await Promise.all([
-      db.from('Users').select('*').order('name'),
-      db.from('Location').select('*').order('name'),
-      db.from('Visit_Log').select('*').order('visit_date', { ascending: false }).order('id', { ascending: false }),
-      db.from('Confirmed_Restock_Day').select('*'),
-      db.from('Unconfirmed_Restock_Day').select('*'),
-      db.from('Restock_Time_Bound').select('*'),
-    ]);
-    state.users = u.data || [];
-    state.stores = s.data || [];
-    state.visits = v.data || [];
-    state.confirmedDays = cd.data || [];
-    state.potentialDays = pd.data || [];
-    state.timeBounds = tb.data || [];
-  } catch(e) { showToast('Failed to load data', 'error'); }
+    const response = await fetch('/api/stores', {
+      method: 'GET',
+      headers: {
+        'username': state.loginName,
+        'passcode': state.loginPasscode
+      }
+    });
+
+    if (!response.ok) {
+      const errData = await response.json();
+      showToast(errData.error || 'Access Denied', 'error');
+      return;
+    }
+
+    const data = await response.json();
+    state.stores = data;
+    render();
+  } catch (err) {
+    showToast('Failed to connect to backend', 'error');
+  }
 }
 
 async function createUser(name) {
@@ -1031,13 +1028,64 @@ async function handleClick(e) {
     return;
   }
 
-  if (action === 'save-store') {
+if (action === 'save-store') {
     captureModalState();
-    if (!state.editStore.name) { showToast('Store name is required', 'error'); return; }
-    const payload = { name: state.editStore.name, address: state.editStore.address || null, city: state.editStore.city || null };
-    const timeBound = { early: state.editEarly || null, late: state.editLate || null };
-    if (await saveStore(payload, state.editConfirmed, state.editPotential, timeBound)) {
-      state.modal = null; state.editStore = null; showToast('Store saved'); render();
+    
+    if (!state.editStore.name) { 
+      showToast('Store name is required', 'error'); 
+      return; 
+    }
+
+    const rawName = state.editStore.name.trim().toLowerCase();
+    const rawAddress = (state.editStore.address || '').trim().toLowerCase();
+    const rawCity = (state.editStore.city || '').trim().toLowerCase();
+
+    // Frontend duplicate check against local state to prevent unnecessary API traffic
+    const isDuplicate = state.stores.some(s => {
+      if (state.editStore.id && s.id === state.editStore.id) return false;
+      return s.name.trim().toLowerCase() === rawName && 
+             (s.address || '').trim().toLowerCase() === rawAddress && 
+             (s.city || '').trim().toLowerCase() === rawCity;
+    });
+
+    if (isDuplicate) {
+      showToast('This exact store already exists!', 'error');
+      return;
+    }
+
+    const payload = { 
+      name: state.editStore.name.trim(), 
+      address: state.editStore.address?.trim() || null, 
+      city: state.editStore.city?.trim() || null 
+    };
+
+    try {
+      // Send the save payload along with credentials to the backend
+      const response = await fetch('/api/stores', {
+        method: 'POST',
+        headers: {
+          'username': state.loginName,
+          'passcode': state.loginPasscode,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errData = await response.json();
+        showToast(errData.error || 'Failed to save store', 'error');
+        return;
+      }
+
+      // Success: Clear editing state, close modal, and refresh data
+      state.modal = null; 
+      state.editStore = null; 
+      showToast('Store saved'); 
+      
+      // Reload the data from the server to guarantee consistency
+      await loadAll(); 
+    } catch (err) {
+      showToast('Network error while saving', 'error');
     }
     return;
   }
