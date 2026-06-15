@@ -10,7 +10,6 @@ const AVATAR_COLORS = ['#a855f7','#22c55e','#f97316','#3b82f6','#ec4899','#14b8a
 const PRODUCT_TYPES = ['Sleeved Boosters','Blisters (1-3 Pack)','Booster Bundles','ETBs','Tins / Mini Tins','Collection Boxes'];
 
 let db = null;
-const IS_DEMO = SUPABASE_URL === 'YOUR_SUPABASE_URL';
 
 function isAdmin() {
   return (state.currentUser?.name || '').toLowerCase() === ADMIN_NAME;
@@ -84,7 +83,6 @@ let state = {
 
 // ─── DB ───────────────────────────────────────────────────────
 function initDB() {
-  if (IS_DEMO) return null;
   try { return supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); }
   catch(e) { return null; }
 }
@@ -114,7 +112,6 @@ async function loadAll() {
 }
 
 async function createUser(name) {
-  if (IS_DEMO) return true;
   const { error } = await db.from('Users').insert([{ name }]);
   if (error) { showToast(error.message, 'error'); return false; }
   const { data } = await db.from('Users').select('*').order('name');
@@ -123,7 +120,6 @@ async function createUser(name) {
 }
 
 async function deleteUser(id) {
-  if (IS_DEMO) return true;
   const { error } = await db.from('Users').delete().eq('id', id);
   if (error) { showToast(error.message, 'error'); return false; }
   const { data } = await db.from('Users').select('*').order('name');
@@ -132,7 +128,6 @@ async function deleteUser(id) {
 }
 
 async function saveStore(payload, confirmedDays, potentialDays, timeBound) {
-  if (IS_DEMO) return true;
   try {
     let storeId;
     if (state.editStore?.id) {
@@ -172,7 +167,6 @@ async function saveStore(payload, confirmedDays, potentialDays, timeBound) {
 }
 
 async function saveVisit(payload) {
-  if (IS_DEMO) return true;
   try {
     if (state.editVisitId) {
       const { error } = await db.from('Visit_Log').update(payload).eq('id', state.editVisitId);
@@ -191,7 +185,6 @@ async function saveVisit(payload) {
 }
 
 async function deleteVisit(id) {
-  if (IS_DEMO) return true;
   const { error } = await db.from('Visit_Log').delete().eq('id', id);
   if (error) { showToast(error.message, 'error'); return false; }
   await loadAll();
@@ -203,7 +196,6 @@ async function deleteStore(id) {
     showToast('Only admins can delete stores', 'error');
     return false;
   }
-  if (IS_DEMO) return true;
   const { error } = await db.from('Location').delete().eq('id', id);
   if (error) { showToast(error.message, 'error'); return false; }
   await loadAll();
