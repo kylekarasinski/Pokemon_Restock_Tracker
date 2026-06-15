@@ -450,7 +450,7 @@ function renderCropModal() {
       </div>
       <div class="crop-area" id="crop-area">
         <img id="crop-img" class="crop-img" src="${state.cropImageSrc}"
-             style="transform: translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.baseScale * state.cropZoom});">
+             style="transform: translate(calc(-50% + ${state.cropPanX}px), calc(-50% + ${state.cropPanY}px)) scale(${state.baseScale * state.cropZoom});">
       </div>
       <div class="form-group">
         <label class="form-label" style="text-align:center;">Zoom</label>
@@ -954,33 +954,33 @@ function attachEvents() {
   }
 
   // Handle Zoom Slider
-const slider = document.getElementById('crop-slider');
+  const slider = document.getElementById('crop-slider');
   if (slider) {
     slider.addEventListener('input', e => {
       state.cropZoom = parseFloat(e.target.value);
       const img = document.getElementById('crop-img');
       if (img) {
-        img.style.transform = `translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.baseScale * state.cropZoom})`;
+        img.style.transform = `translate(calc(-50% + ${state.cropPanX}px), calc(-50% + ${state.cropPanY}px)) scale(${state.baseScale * state.cropZoom})`;
       }
     });
-  } 
+  }
 
-  // Handle Dragging to Pan
   const cropArea = document.getElementById('crop-area');
   if (cropArea) {
-    let isDragging = false; let startX, startY;
+    let isDragging = false;
+    let startX, startY;
     cropArea.addEventListener('mousedown', e => {
       isDragging = true;
       startX = e.clientX - state.cropPanX;
       startY = e.clientY - state.cropPanY;
     });
-  window.addEventListener('mousemove', e => {
+    window.addEventListener('mousemove', e => {
       if (!isDragging) return;
       state.cropPanX = e.clientX - startX;
       state.cropPanY = e.clientY - startY;
       const img = document.getElementById('crop-img');
       if (img) {
-        img.style.transform = `translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.baseScale * state.cropZoom})`;
+        img.style.transform = `translate(calc(-50% + ${state.cropPanX}px), calc(-50% + ${state.cropPanY}px)) scale(${state.baseScale * state.cropZoom})`;
       }
     });
     window.addEventListener('mouseup', () => isDragging = false);
@@ -1404,29 +1404,29 @@ async function handleClick(e) {
     return;
   }
 
-if (action === 'save-crop') {
-  const img = document.getElementById('crop-img');
-  const canvas = document.createElement('canvas');
-  canvas.width = 150;
-  canvas.height = 150;
-  const ctx = canvas.getContext('2d');
+  if (action === 'save-crop') {
+    const img = document.getElementById('crop-img');
+    const canvas = document.createElement('canvas');
+    canvas.width = 150;
+    canvas.height = 150;
+    const ctx = canvas.getContext('2d');
 
-  const finalScale = state.baseScale * state.cropZoom;
-  const scaledW = img.naturalWidth * finalScale;
-  const scaledH = img.naturalHeight * finalScale;
+    const finalScale = state.baseScale * state.cropZoom;
+    const scaledW = img.naturalWidth * finalScale;
+    const scaledH = img.naturalHeight * finalScale;
 
-  const imgCenterX = 75 + state.cropPanX;
-  const imgCenterY = 75 + state.cropPanY;
+    const imgCenterX = 75 + state.cropPanX;
+    const imgCenterY = 75 + state.cropPanY;
 
-  const drawX = imgCenterX - scaledW / 2;
-  const drawY = imgCenterY - scaledH / 2;
+    const drawX = imgCenterX - scaledW / 2;
+    const drawY = imgCenterY - scaledH / 2;
 
-  ctx.drawImage(img, drawX, drawY, scaledW, scaledH);
-  const base64 = canvas.toDataURL('image/jpeg', 0.8);
-  state.modal = null;
-  await updateUserAvatar(state.currentUser.id, base64);
-  return;
-}
+    ctx.drawImage(img, drawX, drawY, scaledW, scaledH);
+    const base64 = canvas.toDataURL('image/jpeg', 0.8);
+    state.modal = null;
+    await updateUserAvatar(state.currentUser.id, base64);
+    return;
+  }
 
   // Ensure dropdown closes if you click anywhere else on the screen
   if (!e.target.closest('.dropdown-container')) {
