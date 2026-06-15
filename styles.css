@@ -1423,6 +1423,10 @@ textarea { resize: vertical; min-height: 100px; }
   .filter-bar { flex-direction: column; }
   .filter-bar > * { border-right: none; border-bottom: 2px solid var(--border); width: 100%; }
   .filter-bar > *:last-child { border-bottom: none; }
+
+  .guide-grid { grid-template-columns: 1fr; }
+  .guide-section-full { grid-column: 1; }
+  .guide-products { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
 }
 
 /* --- Dropdown Menu --- */
@@ -1483,4 +1487,142 @@ textarea { resize: vertical; min-height: 100px; }
   height: auto;
   transform-origin: center center;
   pointer-events: none;
+}
+
+/* ── Guide ───────────────────────────────────────────────────── */
+.guide-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+  gap: 24px;
+}
+
+.guide-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.guide-section-full {
+  grid-column: 1 / -1;
+}
+
+.guide-section-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.guide-intro {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+
+.guide-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-step {
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.guide-step-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--jade);
+  margin-bottom: 6px;
+  font-family: 'DM Mono', monospace;
+  letter-spacing: 0.04em;
+}
+
+.guide-step-text {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+
+.guide-terms {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.guide-term {
+  padding: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.guide-term-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  font-family: 'DM Mono', monospace;
+}
+
+.guide-term-text {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.7;
+}
+
+.guide-link {
+  color: var(--jade);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.guide-link:hover { opacity: 0.8; }
+
+.guide-products {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.guide-product {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.2s ease;
+}
+
+.guide-product:hover { border-color: var(--border-2); }
+
+.guide-product-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.guide-product-packs {
+  font-size: 12px;
+  font-family: 'DM Mono', monospace;
+  color: var(--jade);
+  font-weight: 500;
+}
+
+.guide-product-desc {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.6;
+  margin-top: 2px;
 }

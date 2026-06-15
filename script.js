@@ -7,7 +7,7 @@ const PRICE_LABELS = {
   scalper_price: 'Scalper Price'
 };
 const AVATAR_COLORS = ['#a855f7','#22c55e','#f97316','#3b82f6','#ec4899','#14b8a6'];
-const PRODUCT_TYPES = ['Sleeved Boosters','Blisters (1-3 Pack)','Booster Bundles','ETBs','Tins / Mini Tins','Collection Boxes', 'Other'];
+const PRODUCT_TYPES = ['Sleeved Boosters','Blisters (1-3 Pack)','Booster Bundles','ETBs','Tins / Mini Tins','Collection Boxes','Booster Boxes','Other'];
 
 const ADMIN_NAME = 'kyle';
 
@@ -405,6 +405,7 @@ function renderMain() {
       <nav class="nav">
         <button class="nav-btn ${state.tab==='stores'?'active':''}" data-action="tab" data-tab="stores">Stores</button>
         <button class="nav-btn ${state.tab==='route'?'active':''}" data-action="tab" data-tab="route">Route</button>
+        <button class="nav-btn ${state.tab==='guide'?'active':''}" data-action="tab" data-tab="guide">Guide</button>
       </nav>
       <div class="topbar-right dropdown-container">
         <button class="user-chip" data-action="toggle-dropdown">
@@ -425,9 +426,132 @@ function renderMain() {
       </div>
     </header>
     <main class="content">
-      ${state.tab === 'stores' ? renderStores() : renderRoute()}
+      ${state.tab === 'stores' ? renderStores() : state.tab === 'route' ? renderRoute() : renderGuide()}
     </main>
     ${renderModal()}
+  </div>`;
+}
+
+function renderGuide() {
+  return `
+  <div class="page-header">
+    <div>
+      <h1 class="page-title">Guide</h1>
+      <p class="page-sub">Terminology, tips, and how to use the tracker</p>
+    </div>
+  </div>
+
+  <div class="guide-grid">
+
+    <div class="guide-section">
+      <h2 class="guide-section-title">How to Use</h2>
+      <p class="guide-intro">Try your best to provide accurate information and visits. Everyone benefits when we go about it correctly, so keep visits logged and note specific information per store.</p>
+      <div class="guide-steps">
+        <div class="guide-step">
+          <div class="guide-step-label">Adding a store</div>
+          <p class="guide-step-text">Press Add Store and provide as much relevant information as possible. Mark down any potential restock days if you have an idea of when they might stock, or leave it blank. If you hit a restock on a specific day, mark it as a confirmed restock day.</p>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-label">Logging a visit</div>
+          <p class="guide-step-text">Find the store you visited (or create it if it is not in the database) and fill in what products they had, rate the pricing, quality, amount, and variety of stock.</p>
+        </div>
+        <div class="guide-step">
+          <div class="guide-step-label">Building a route</div>
+          <p class="guide-step-text">Enter the address you are starting from, select a day, and hit Build Route. The planner will show all stores that restock on that day. You can exclude individual stops from the route if you want to skip them without removing them from the list.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-section">
+      <h2 class="guide-section-title">Restock Days</h2>
+      <div class="guide-terms">
+        <div class="guide-term">
+          <span class="tag tag-confirmed" style="margin-bottom:8px;display:inline-flex;">✓ Confirmed</span>
+          <p class="guide-term-text">You physically hit this restock on this day. You were there, you saw it, it happened.</p>
+        </div>
+        <div class="guide-term">
+          <span class="tag tag-potential" style="margin-bottom:8px;display:inline-flex;">~ Potential</span>
+          <p class="guide-term-text">A day this store might restock. Maybe someone heard from staff it restocks on Fridays, but nobody has physically confirmed it yet.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-section">
+      <h2 class="guide-section-title">Visit Ratings</h2>
+      <div class="guide-terms">
+        <div class="guide-term">
+          <div class="guide-term-label">Quality</div>
+          <p class="guide-term-text">How good are the sets and products they carry? Are they stocking current sets or mostly old product?</p>
+        </div>
+        <div class="guide-term">
+          <div class="guide-term-label">Amount</div>
+          <p class="guide-term-text">Did they have a lot of stock or just a little? A full shelf vs a couple of packs left.</p>
+        </div>
+        <div class="guide-term">
+          <div class="guide-term-label">Variety</div>
+          <p class="guide-term-text">Did they have a wide range of different products, or just one or two types?</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-section">
+      <h2 class="guide-section-title">Pack Pricing</h2>
+      <p class="guide-step-text">If you are trying to avoid paying scalper pricing, you should be paying around $5-$7 per pack for the products you get, unless packs are older or out of print.</p>
+      <p class="guide-step-text" style="margin-top:12px;">Use <a href="https://www.tcgplayer.com" target="_blank" class="guide-link">TCGPlayer</a> to get an accurate idea of what the current market price is for products if you are paying above MSRP.</p>
+    </div>
+
+    <div class="guide-section guide-section-full">
+      <h2 class="guide-section-title">Product Guide</h2>
+      <p class="guide-intro">The Pokemon Company has released a countless number of products with various pack counts and price points. Here are the most common ones.</p>
+      <div class="guide-products">
+        <div class="guide-product">
+          <div class="guide-product-name">Sleeved Pack</div>
+          <div class="guide-product-packs">1 pack</div>
+          <p class="guide-product-desc">A loose pack in a sleeve. The most basic unit of Pokemon product.</p>
+        </div>
+        <div class="guide-product">
+          <div class="guide-product-name">1-3 Pack Blister</div>
+          <div class="guide-product-packs">1-3 packs</div>
+          <p class="guide-product-desc">Pack(s) in a blister container, usually including a promo card and a coin.</p>
+        </div>
+        <div class="guide-product">
+          <div class="guide-product-name">Booster Bundle</div>
+          <div class="guide-product-packs">6 packs</div>
+          <p class="guide-product-desc">Contains 6 packs. A good option for card storage.</p>
+        </div>
+        <div class="guide-product">
+          <div class="guide-product-name">Elite Trainer Box</div>
+          <div class="guide-product-packs">9 packs</div>
+          <p class="guide-product-desc">Contains 9 packs plus a promo card, card sleeves, and various TCG accessories. Also a great choice for card storage.</p>
+        </div>
+        <div class="guide-product">
+          <div class="guide-product-name">Booster Box</div>
+          <div class="guide-product-packs">36 packs</div>
+          <p class="guide-product-desc">Contains 36 packs. Enhanced Booster Boxes include a promo card as well. The largest standard retail product.</p>
+        </div>
+        <div class="guide-product">
+          <div class="guide-product-name">Collection Box</div>
+          <div class="guide-product-packs">4-10 packs</div>
+          <p class="guide-product-desc">Contains anywhere from 4-10 packs on average, usually with various promo cards and other items depending on the box.</p>
+        </div>
+        <div class="guide-product">
+          <div class="guide-product-name">Full Tin</div>
+          <div class="guide-product-packs">4 packs</div>
+          <p class="guide-product-desc">Contains 4 packs and a promo card.</p>
+        </div>
+        <div class="guide-product">
+          <div class="guide-product-name">Shallow Tin</div>
+          <div class="guide-product-packs">3 packs</div>
+          <p class="guide-product-desc">Contains 3 packs and a promo card or cards.</p>
+        </div>
+        <div class="guide-product">
+          <div class="guide-product-name">Mini Tin</div>
+          <div class="guide-product-packs">2 packs</div>
+          <p class="guide-product-desc">Contains 2 packs and a collectible art page.</p>
+        </div>
+      </div>
+    </div>
+
   </div>`;
 }
 
