@@ -9,6 +9,8 @@ const PRICE_LABELS = {
 const AVATAR_COLORS = ['#a855f7','#22c55e','#f97316','#3b82f6','#ec4899','#14b8a6'];
 const PRODUCT_TYPES = ['Sleeved Boosters','Blisters (1-3 Pack)','Booster Bundles','ETBs','Tins / Mini Tins','Collection Boxes'];
 
+const ADMIN_NAME = 'kyle';
+
 let db = null;
 
 function isAdmin() {
@@ -1234,5 +1236,16 @@ document.addEventListener('keydown', e => {
 });
 
 // ─── BOOT ─────────────────────────────────────────────────────
-async function boot() { db = initDB(); await loadAll(); render(); setupRealtime(); }
+async function boot() {
+  try {
+    const response = await fetch('/api/users');
+    if (response.ok) {
+      state.users = await response.json();
+    }
+  } catch (err) {
+    console.error('Failed to fetch user list');
+  }
+  render();
+}
+
 boot();
