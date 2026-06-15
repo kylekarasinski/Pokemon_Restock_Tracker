@@ -339,12 +339,12 @@ function renderLogin() {
       <p class="login-sub">Pokemon Card Restock Manager</p>
       <div class="login-card">
         <div class="passcode-header">
-  ${renderAvatarHtml(state.pendingAdminUser, 'avatar')}
-  <div>
-    <p class="passcode-name">${esc(state.pendingAdminUser.name)}</p>
-    <p class="login-card-label" style="margin:0">Admin access required</p>
-  </div>
-</div>
+        ${renderAvatarHtml(state.pendingAdminUser, 'avatar')}
+        <div>
+          <p class="passcode-name">${esc(state.pendingAdminUser.name)}</p>
+          <p class="login-card-label" style="margin:0">Admin access required</p>
+        </div>
+      </div>
         <div class="form-group" style="margin-top: 20px; margin-bottom: 6px;">
           <label class="form-label">Passcode</label>
           <input
@@ -448,17 +448,14 @@ function renderCropModal() {
         <h2 class="modal-title">Adjust Picture</h2>
         <button class="modal-close" data-action="close-modal">✕</button>
       </div>
-      
       <div class="crop-area" id="crop-area">
-        <img id="crop-img" class="crop-img" src="${state.cropImageSrc}" 
+        <img id="crop-img" class="crop-img" src="${state.cropImageSrc}"
              style="transform: translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.baseScale * state.cropZoom});">
       </div>
-      
       <div class="form-group">
-        <label class="form-label" style="text-align: center;">Zoom</label>
+        <label class="form-label" style="text-align:center;">Zoom</label>
         <input type="range" class="form-input" id="crop-slider" min="1" max="4" step="0.1" value="${state.cropZoom}">
       </div>
-
       <div class="modal-footer">
         <button class="btn btn-ghost" data-action="close-modal">Cancel</button>
         <button class="btn btn-primary" data-action="save-crop">Save Picture</button>
