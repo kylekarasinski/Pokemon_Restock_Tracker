@@ -198,10 +198,21 @@ async function deleteStore(id) {
     showToast('Only admins can delete stores', 'error');
     return false;
   }
-  const { error } = await db.from('Location').delete().eq('id', id);
-  if (error) { showToast(error.message, 'error'); return false; }
-  await loadAll();
-  return true;
+  
+  try {
+    const response = await fetch(`/api/stores?id=${id}`, {
+      method: 'DELETE',
+      headers: { 'username': state.loginName, 'passcode': state.loginPasscode }
+    });
+
+    if (!response.ok) throw new Error('Delete failed');
+    
+    await loadAll();
+    return true;
+  } catch (e) {
+    showToast('Error deleting store', 'error');
+    return false;
+  }
 }
 
 // ─── HELPERS ──────────────────────────────────────────────────
@@ -859,19 +870,42 @@ function openVisitModal(storeId, existingVisit = null) {
 }
 
 // ─── PASSCODE ─────────────────────────────────────────────────
-function handlePasscodeSubmit() {
+async function handlePasscodeSubmit() {
   const input = document.getElementById('passcode-input');
   if (!input) return;
-  const val = input.value.trim();
-  if (val === ADMIN_PASSCODE) {
+  const enteredPasscode = input.value.trim();
+
+  // Temporarily apply the credentials
+  state.loginName = state.pendingAdminUser.name;
+  state.loginPasscode = enteredPasscode;
+
+  try {
+    // Ping Vercel. If the passcode is wrong, the backend will reject it.
+    const response = await fetch('/api/stores', {
+      method: 'GET',
+      headers: { 'username': state.loginName, 'passcode': state.loginPasscode }
+    });
+
+    if (!response.ok) {
+      state.passcodeError = true;
+      state.loginName = '';
+      state.loginPasscode = '';
+      render();
+      return;
+    }
+
+    // Success! Pull the data and log the Admin in.
+    const data = await response.json();
+    state.stores = data;
+    
     state.currentUser = state.pendingAdminUser;
     state.pendingAdminUser = null;
     state.passcodeError = false;
     state.screen = 'main';
     render();
-  } else {
-    state.passcodeError = true;
-    render();
+    
+  } catch (err) {
+    showToast('Network error verifying passcode', 'error');
   }
 }
 
@@ -913,19 +947,24 @@ async function handleClick(e) {
   }
 
   // ─── LOGIN ────────────────────────────────────────────────
-  if (action === 'select-user') {
+ if (action === 'select-user') {
     const user = state.users.find(u => u.id === parseInt(e.currentTarget.dataset.id));
     if (!user) return;
-    // Admin must pass the passcode gate
+
     if (user.name.toLowerCase() === ADMIN_NAME) {
+      // Admin hit: Show passcode screen
       state.pendingAdminUser = user;
       state.passcodeError = false;
       render();
       setTimeout(() => document.getElementById('passcode-input')?.focus(), 50);
     } else {
+      // Friend hit: Bypass passcode entirely and load the map
       state.currentUser = user;
+      state.loginName = user.name;
+      state.loginPasscode = ''; 
       state.screen = 'main';
-      render();
+      render(); 
+      loadAll(); 
     }
     return;
   }
