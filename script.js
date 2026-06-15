@@ -339,12 +339,12 @@ function renderLogin() {
       <p class="login-sub">Pokemon Card Restock Manager</p>
       <div class="login-card">
         <div class="passcode-header">
-          ${avatarColor(state.pendingAdminUser.name)}">${initials(state.pendingAdminUser.name)}
-          <div>
-            <p class="passcode-name">${esc(state.pendingAdminUser.name)}</p>
-            <p class="login-card-label" style="margin:0">Admin access required</p>
-          </div>
-        </div>
+  ${renderAvatarHtml(state.pendingAdminUser, 'avatar')}
+  <div>
+    <p class="passcode-name">${esc(state.pendingAdminUser.name)}</p>
+    <p class="login-card-label" style="margin:0">Admin access required</p>
+  </div>
+</div>
         <div class="form-group" style="margin-top: 20px; margin-bottom: 6px;">
           <label class="form-label">Passcode</label>
           <input
@@ -375,13 +375,14 @@ function renderLogin() {
     <div class="login-card">
       <p class="login-card-label">Select profile</p>
       <div class="user-list">
-        ${state.users.map(u => `
-          <div class="user-row" data-action="select-user" data-id="${u.id}">
-              ${renderAvatarHtml(u, 'avatar')}
-              <div class="user-row-name">${esc(u.name)}</div>
-              <div class="user-row-sub">Continue as ${esc(u.name)}</div>
-            </div>
-          </div>`).join('')}
+      ${state.users.map(u => `
+        <div class="user-row" data-action="select-user" data-id="${u.id}">
+          ${renderAvatarHtml(u, 'avatar')}
+          <div>
+            <div class="user-row-name">${esc(u.name)}</div>
+            <div class="user-row-sub">Continue as ${esc(u.name)}</div>
+          </div>
+        </div>`).join('')}
         ${state.addingUser ? `
           <div class="add-user-form">
             <input type="text" id="new-user-input" placeholder="Your name..." autofocus />
