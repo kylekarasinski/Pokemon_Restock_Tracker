@@ -70,6 +70,12 @@ let state = {
   routeResult: null,
   routeExcludedIds: [],
   addingUser: false,
+
+  dropdownOpen: false,
+  cropImageSrc: null,
+  cropZoom: 1,
+  cropPanX: 0,
+  cropPanY: 0,
 };
 
 // ─── API CALLS ────────────────────────────────────────────────
@@ -399,13 +405,22 @@ function renderMain() {
         <button class="nav-btn ${state.tab==='stores'?'active':''}" data-action="tab" data-tab="stores">Stores</button>
         <button class="nav-btn ${state.tab==='route'?'active':''}" data-action="tab" data-tab="route">Route</button>
       </nav>
-      <div class="topbar-right">
-        <button class="user-chip" data-action="open-account-switcher">
-          <div class="avatar-sm" style="background:${avatarColor(state.currentUser?.name)}">${initials(state.currentUser?.name)}</div>
+      <div class="topbar-right dropdown-container">
+        <button class="user-chip" data-action="toggle-dropdown">
+          ${renderAvatarHtml(state.currentUser, 'avatar-sm')}
           <span class="user-chip-name">${esc(state.currentUser?.name)}</span>
           ${isAdmin() ? '<span class="admin-badge">admin</span>' : ''}
           <span class="chip-caret">⌄</span>
         </button>
+        
+        ${state.dropdownOpen ? `
+        <div class="dropdown-menu">
+          <label class="dropdown-item">
+            Change Profile Picture
+            <input type="file" accept="image/*" style="display:none;" data-action="select-pfp">
+          </label>
+          <button class="dropdown-item danger" data-action="logout">Log out</button>
+        </div>` : ''}
       </div>
     </header>
     <main class="content">
@@ -420,7 +435,34 @@ function renderModal() {
   if (state.modal === 'visit') return renderVisitModal();
   if (state.modal === 'accounts') return renderAccountsModal();
   if (state.modal === 'logs') return renderLogsModal();
+  if (state.modal === 'crop') return renderCropModal();
   return '';
+}
+
+function renderCropModal() {
+  return `
+  <div class="modal-overlay" data-action="close-modal-overlay">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2 class="modal-title">Adjust Picture</h2>
+        <button class="modal-close" data-action="close-modal">✕</button>
+      </div>
+      
+      <div class="crop-area" id="crop-area">
+        <img id="crop-img" class="crop-img" src="${state.cropImageSrc}" style="transform: translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.cropZoom});">
+      </div>
+      
+      <div class="form-group">
+        <label class="form-label" style="text-align: center;">Zoom</label>
+        <input type="range" class="form-input" id="crop-slider" min="0.5" max="3" step="0.05" value="${state.cropZoom}">
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn btn-ghost" data-action="close-modal">Cancel</button>
+        <button class="btn btn-primary" data-action="save-crop">Save Picture</button>
+      </div>
+    </div>
+  </div>`;
 }
 
 function renderAccountsModal() {
@@ -883,6 +925,52 @@ function attachEvents() {
       if (e.key === 'Enter') handlePasscodeSubmit();
     });
   }
+
+  // --- CROPPER LOGIC ---
+  // Handle file selection from the dropdown
+  const pfpInput = document.querySelector('[data-action="select-pfp"]');
+  if (pfpInput) {
+    pfpInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        state.cropImageSrc = event.target.result;
+        state.cropZoom = 1; state.cropPanX = 0; state.cropPanY = 0;
+        state.dropdownOpen = false;
+        state.modal = 'crop';
+        render();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // Handle Zoom Slider
+  const slider = document.getElementById('crop-slider');
+  if (slider) {
+    slider.addEventListener('input', e => {
+      state.cropZoom = e.target.value;
+      document.getElementById('crop-img').style.transform = `translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.cropZoom})`;
+    });
+  }
+
+  // Handle Dragging to Pan
+  const cropArea = document.getElementById('crop-area');
+  if (cropArea) {
+    let isDragging = false; let startX, startY;
+    cropArea.addEventListener('mousedown', e => {
+      isDragging = true;
+      startX = e.clientX - state.cropPanX;
+      startY = e.clientY - state.cropPanY;
+    });
+    window.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      state.cropPanX = e.clientX - startX;
+      state.cropPanY = e.clientY - startY;
+      document.getElementById('crop-img').style.transform = `translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.cropZoom})`;
+    });
+    window.addEventListener('mouseup', () => isDragging = false);
+  }
 }
 
 function handleToggleProduct(e) {
@@ -1293,6 +1381,47 @@ async function handleClick(e) {
     }
     render();
     return;
+  }
+
+// Open/Close Dropdown
+  if (action === 'toggle-dropdown') {
+    state.dropdownOpen = !state.dropdownOpen;
+    render();
+    return;
+  }
+
+  // Generate the Final Avatar
+  if (action === 'save-crop') {
+    showToast('Saving avatar...');
+    const img = document.getElementById('crop-img');
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // The final size we send to the database
+    canvas.width = 150; canvas.height = 150; 
+    
+    // Calculate how the image was dragged and zoomed
+    const centerX = 75; const centerY = 75;
+    const scaledWidth = img.naturalWidth * state.cropZoom;
+    const scaledHeight = img.naturalHeight * state.cropZoom;
+    const drawX = centerX - (scaledWidth / 2) + state.cropPanX;
+    const drawY = centerY - (scaledHeight / 2) + state.cropPanY;
+
+    // Draw the perfect cut and save it
+    ctx.drawImage(img, drawX, drawY, scaledWidth, scaledHeight);
+    const base64 = canvas.toDataURL('image/jpeg', 0.8);
+    
+    state.modal = null;
+    await updateUserAvatar(state.currentUser.id, base64);
+    return;
+  }
+
+  // Ensure dropdown closes if you click anywhere else on the screen
+  if (!e.target.closest('.dropdown-container')) {
+    if (state.dropdownOpen) {
+      state.dropdownOpen = false;
+      render();
+    }
   }
 
   // ─── MODAL CLOSE ──────────────────────────────────────────
