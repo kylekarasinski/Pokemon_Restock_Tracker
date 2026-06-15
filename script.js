@@ -879,36 +879,43 @@ function openVisitModal(storeId, existingVisit = null) {
 // ─── PASSCODE ─────────────────────────────────────────────────
 async function handlePasscodeSubmit() {
   const input = document.getElementById('passcode-input');
-  if (!input) return;
+  
+  // FIX 1: Prevent crash if the user hit 'Back' but somehow triggered a submit
+  if (!input || !state.pendingAdminUser) return; 
+  
   const enteredPasscode = input.value.trim();
-
-  // Temporarily apply the credentials
-  state.loginName = state.pendingAdminUser.name;
-  state.loginPasscode = enteredPasscode;
+  const attemptName = state.pendingAdminUser.name;
 
   try {
-    // Ping Vercel. If the passcode is wrong, the backend will reject it.
+    // Ping Vercel to verify the passcode
     const response = await fetch('/api/stores', {
       method: 'GET',
-      headers: { 'username': state.loginName, 'passcode': state.loginPasscode }
+      headers: { 'username': attemptName, 'passcode': enteredPasscode }
     });
 
     if (!response.ok) {
       state.passcodeError = true;
-      state.loginName = '';
-      state.loginPasscode = '';
       render();
       return;
     }
 
-    // Success! Pull the data and log the Admin in.
     const data = await response.json();
-    state.stores = data;
     
+    // FIX 2: Correctly unpack the bundle so the UI doesn't crash
+    state.stores = data.stores || [];
+    state.visits = data.visits || [];
+    state.confirmedDays = data.confirmedDays || [];
+    state.potentialDays = data.potentialDays || [];
+    state.timeBounds = data.timeBounds || [];
+    
+    // Success: Finalize the login variables and move to the main screen
+    state.loginName = attemptName;
+    state.loginPasscode = enteredPasscode;
     state.currentUser = state.pendingAdminUser;
     state.pendingAdminUser = null;
     state.passcodeError = false;
     state.screen = 'main';
+    
     render();
     
   } catch (err) {
