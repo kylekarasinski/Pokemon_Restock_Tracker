@@ -73,6 +73,7 @@ let state = {
 
   dropdownOpen: false,
   cropImageSrc: null,
+  baseScale: 1,
   cropZoom: 1,
   cropPanX: 0,
   cropPanY: 0,
@@ -338,7 +339,7 @@ function renderLogin() {
       <p class="login-sub">Pokemon Card Restock Manager</p>
       <div class="login-card">
         <div class="passcode-header">
-          <div class="avatar" style="background:${avatarColor(state.pendingAdminUser.name)}">${initials(state.pendingAdminUser.name)}</div>
+          ${avatarColor(state.pendingAdminUser.name)}">${initials(state.pendingAdminUser.name)}
           <div>
             <p class="passcode-name">${esc(state.pendingAdminUser.name)}</p>
             <p class="login-card-label" style="margin:0">Admin access required</p>
@@ -376,8 +377,7 @@ function renderLogin() {
       <div class="user-list">
         ${state.users.map(u => `
           <div class="user-row" data-action="select-user" data-id="${u.id}">
-            <div class="avatar" style="background:${avatarColor(u.name)}">${initials(u.name)}</div>
-            <div>
+              ${renderAvatarHtml(u, 'avatar')}
               <div class="user-row-name">${esc(u.name)}</div>
               <div class="user-row-sub">Continue as ${esc(u.name)}</div>
             </div>
@@ -449,12 +449,13 @@ function renderCropModal() {
       </div>
       
       <div class="crop-area" id="crop-area">
-        <img id="crop-img" class="crop-img" src="${state.cropImageSrc}" style="transform: translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.cropZoom});">
+        <img id="crop-img" class="crop-img" src="${state.cropImageSrc}" 
+             style="transform: translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.baseScale * state.cropZoom});">
       </div>
       
       <div class="form-group">
         <label class="form-label" style="text-align: center;">Zoom</label>
-        <input type="range" class="form-input" id="crop-slider" min="0.5" max="3" step="0.05" value="${state.cropZoom}">
+        <input type="range" class="form-input" id="crop-slider" min="1" max="4" step="0.1" value="${state.cropZoom}">
       </div>
 
       <div class="modal-footer">
@@ -935,24 +936,34 @@ function attachEvents() {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (event) => {
-        state.cropImageSrc = event.target.result;
-        state.cropZoom = 1; state.cropPanX = 0; state.cropPanY = 0;
-        state.dropdownOpen = false;
-        state.modal = 'crop';
-        render();
+        // Pre-measure the image to find the perfect fit scale
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          state.baseScale = 150 / Math.min(tempImg.width, tempImg.height);
+          state.cropImageSrc = event.target.result;
+          state.cropZoom = 1; // 1x now means "perfectly fitted to the circle"
+          state.cropPanX = 0; state.cropPanY = 0;
+          state.dropdownOpen = false;
+          state.modal = 'crop';
+          render();
+        };
+        tempImg.src = event.target.result;
       };
       reader.readAsDataURL(file);
     });
   }
 
   // Handle Zoom Slider
-  const slider = document.getElementById('crop-slider');
+const slider = document.getElementById('crop-slider');
   if (slider) {
     slider.addEventListener('input', e => {
-      state.cropZoom = e.target.value;
-      document.getElementById('crop-img').style.transform = `translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.cropZoom})`;
+      state.cropZoom = parseFloat(e.target.value);
+      const img = document.getElementById('crop-img');
+      if (img) {
+        img.style.transform = `translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.baseScale * state.cropZoom})`;
+      }
     });
-  }
+  } 
 
   // Handle Dragging to Pan
   const cropArea = document.getElementById('crop-area');
@@ -963,11 +974,14 @@ function attachEvents() {
       startX = e.clientX - state.cropPanX;
       startY = e.clientY - state.cropPanY;
     });
-    window.addEventListener('mousemove', e => {
+  window.addEventListener('mousemove', e => {
       if (!isDragging) return;
       state.cropPanX = e.clientX - startX;
       state.cropPanY = e.clientY - startY;
-      document.getElementById('crop-img').style.transform = `translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.cropZoom})`;
+      const img = document.getElementById('crop-img');
+      if (img) {
+        img.style.transform = `translate(${state.cropPanX}px, ${state.cropPanY}px) scale(${state.baseScale * state.cropZoom})`;
+      }
     });
     window.addEventListener('mouseup', () => isDragging = false);
   }
@@ -1397,17 +1411,22 @@ async function handleClick(e) {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     
-    // The final size we send to the database
-    canvas.width = 150; canvas.height = 150; 
+    // Set fixed size for the database
+    canvas.width = 150; 
+    canvas.height = 150; 
     
-    // Calculate how the image was dragged and zoomed
-    const centerX = 75; const centerY = 75;
-    const scaledWidth = img.naturalWidth * state.cropZoom;
-    const scaledHeight = img.naturalHeight * state.cropZoom;
+    // Calculate final scale combining our base fix and the user's slider
+    const finalScale = state.baseScale * state.cropZoom;
+    
+    const centerX = 75; 
+    const centerY = 75;
+    const scaledWidth = img.naturalWidth * finalScale;
+    const scaledHeight = img.naturalHeight * finalScale;
+    
+    // Draw the image centered at the current offset
     const drawX = centerX - (scaledWidth / 2) + state.cropPanX;
     const drawY = centerY - (scaledHeight / 2) + state.cropPanY;
 
-    // Draw the perfect cut and save it
     ctx.drawImage(img, drawX, drawY, scaledWidth, scaledHeight);
     const base64 = canvas.toDataURL('image/jpeg', 0.8);
     
