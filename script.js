@@ -7,7 +7,7 @@ const PRICE_LABELS = {
   scalper_price: 'Scalper Price'
 };
 const AVATAR_COLORS = ['#a855f7','#22c55e','#f97316','#3b82f6','#ec4899','#14b8a6'];
-const PRODUCT_TYPES = ['Sleeved Boosters','Blisters (1-3 Pack)','Booster Bundles','ETBs','Tins / Mini Tins','Collection Boxes'];
+const PRODUCT_TYPES = ['Sleeved Boosters','Blisters (1-3 Pack)','Booster Bundles','ETBs','Tins / Mini Tins','Collection Boxes', 'Other'];
 
 const ADMIN_NAME = 'kyle';
 
