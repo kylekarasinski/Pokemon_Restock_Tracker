@@ -572,7 +572,10 @@ function renderStoreCard(s) {
       <div class="store-card-info">
         <h3 class="store-name">${esc(s.name)}</h3>
         ${location ? `<p class="store-location">${esc(location)}</p>` : ''}
-        <p style="font-size: 0.75rem; color: #64748b; margin-top: 4px;">Added by ${esc(userName(s.created_by))}</p>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+          ${renderAvatarHtml(state.users.find(u => u.id === s.created_by), 'avatar-sm')}
+          <span style="font-size:0.75rem;color:#64748b;">Added by ${esc(userName(s.created_by))}</span>
+        </div>
       </div>
       <div class="store-card-actions">
         ${hasLocation ? `<a href="${mapsUrl(s)}" target="_blank" class="btn btn-ghost btn-sm maps-btn" title="Open in Google Maps">📍 Maps</a>` : ''}
