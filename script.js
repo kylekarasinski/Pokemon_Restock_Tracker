@@ -1402,36 +1402,36 @@ async function handleClick(e) {
     return;
   }
 
-  // Generate the Final Avatar
-  if (action === 'save-crop') {
-    showToast('Saving avatar...');
-    const img = document.getElementById('crop-img');
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    
-    // Set fixed size for the database
-    canvas.width = 150; 
-    canvas.height = 150; 
-    
-    // Calculate final scale combining our base fix and the user's slider
-    const finalScale = state.baseScale * state.cropZoom;
-    
-    const centerX = 75; 
-    const centerY = 75;
-    const scaledWidth = img.naturalWidth * finalScale;
-    const scaledHeight = img.naturalHeight * finalScale;
-    
-    // Draw the image centered at the current offset
-    const drawX = centerX - (scaledWidth / 2) + state.cropPanX;
-    const drawY = centerY - (scaledHeight / 2) + state.cropPanY;
+if (action === 'save-crop') {
+  const img = document.getElementById('crop-img');
+  const cropArea = document.getElementById('crop-area');
+  const canvas = document.createElement('canvas');
+  canvas.width = 150;
+  canvas.height = 150;
+  const ctx = canvas.getContext('2d');
 
-    ctx.drawImage(img, drawX, drawY, scaledWidth, scaledHeight);
-    const base64 = canvas.toDataURL('image/jpeg', 0.8);
-    
-    state.modal = null;
-    await updateUserAvatar(state.currentUser.id, base64);
-    return;
-  }
+  const finalScale = state.baseScale * state.cropZoom;
+
+  // The crop area is 150x150, so center is always 75,75
+  // The image is transformed via translate+scale around its own center
+  // We need to find where the top-left of the image lands in canvas space
+  const scaledW = img.naturalWidth * finalScale;
+  const scaledH = img.naturalHeight * finalScale;
+
+  // Image center sits at crop center (75,75) plus user pan
+  const imgCenterX = 75 + state.cropPanX;
+  const imgCenterY = 75 + state.cropPanY;
+
+  const drawX = imgCenterX - scaledW / 2;
+  const drawY = imgCenterY - scaledH / 2;
+
+  ctx.drawImage(img, drawX, drawY, scaledW, scaledH);
+
+  const base64 = canvas.toDataURL('image/jpeg', 0.8);
+  state.modal = null;
+  await updateUserAvatar(state.currentUser.id, base64);
+  return;
+}
 
   // Ensure dropdown closes if you click anywhere else on the screen
   if (!e.target.closest('.dropdown-container')) {
