@@ -597,6 +597,7 @@ function renderStoreCard(s) {
         <div class="latest-visit-meta">
           <span class="field-label">Last visit</span>
           <span class="visit-meta-right">
+            ${renderAvatarHtml(state.users.find(u => u.id === latest.user_id), 'avatar-sm')}
             <span class="visit-by">${esc(userName(latest.user_id))}</span>
             <span class="visit-date">${formatDate(latest.visit_date)}</span>
           </span>
@@ -658,8 +659,9 @@ function renderLogsModal() {
           <div class="log-row">
             <div class="log-row-header">
               <div class="log-row-meta">
+                ${renderAvatarHtml(state.users.find(u => u.id === v.user_id), 'avatar-sm')}
+                <span class="log-by">${esc(userName(v.user_id))}</span>
                 <span class="log-date">${formatDate(v.visit_date)}</span>
-                <span class="log-by">by ${esc(userName(v.user_id))}</span>
                 ${v.prices ? `<span class="tag tag-price">${PRICE_LABELS[v.prices] || v.prices}</span>` : ''}
               </div>
               ${canEdit ? `
