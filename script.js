@@ -106,7 +106,14 @@ async function loadAll() {
     }
 
     const data = await response.json();
-    state.stores = data;
+    
+    // Unpack the new bundled response into your state
+    state.stores = data.stores || [];
+    state.visits = data.visits || [];
+    state.confirmedDays = data.confirmedDays || [];
+    state.potentialDays = data.potentialDays || [];
+    state.timeBounds = data.timeBounds || [];
+    
     render();
   } catch (err) {
     showToast('Failed to connect to backend', 'error');
